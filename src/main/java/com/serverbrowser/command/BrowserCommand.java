@@ -9,6 +9,7 @@ import com.serverbrowser.display.DisplayManager;
 import com.serverbrowser.display.ScreenInstance;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
@@ -160,6 +161,21 @@ public class BrowserCommand {
                 .then(Commands.literal("list")
                     .executes(ctx -> listScreens(ctx.getSource()))
                 )
+                // 15-2. 画面プロパティ詳細表示: /browser info, /browser status, /browser prop (手持ち画面用), /browser info_id <id> (OP専用)
+                .then(Commands.literal("info")
+                    .executes(ctx -> showScreenInfo(ctx.getSource()))
+                )
+                .then(Commands.literal("status")
+                    .executes(ctx -> showScreenInfo(ctx.getSource()))
+                )
+                .then(Commands.literal("prop")
+                    .executes(ctx -> showScreenInfo(ctx.getSource()))
+                )
+                .then(Commands.literal("info_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> showScreenInfoById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
                 // 16. FPS 設定: /browser fps <値> (手持ち画面用), /browser fps_id <id> <値> (OP専用)
                 .then(Commands.literal("fps")
                     .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
@@ -244,6 +260,7 @@ public class BrowserCommand {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.scroll"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.info"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.res"), false);
@@ -251,6 +268,7 @@ public class BrowserCommand {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_near"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_id"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.info_id"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps_id"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality_id"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.res_id"), false);
@@ -527,6 +545,77 @@ public class BrowserCommand {
             ), false);
         }
         return 1;
+    }
+
+    private static int showScreenInfo(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ScreenInstance screen = DisplayManager.getInstance().getHeldScreen(player);
+            if (screen == null) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.hold_wand_required"));
+                return 0;
+            }
+            displayScreenInfo(source, screen);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int showScreenInfoById(CommandSourceStack source, int id) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            ScreenInstance screen = DisplayManager.getInstance().getScreen(id);
+            if (screen == null) {
+                source.sendFailure(Component.literal("§c[ServerBrowser] 画面 #" + id + " は存在しません。"));
+                return 0;
+            }
+            displayScreenInfo(source, screen);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static void displayScreenInfo(CommandSourceStack source, ScreenInstance screen) {
+        ServerBrowserConfig config = ServerBrowserConfig.get();
+        int totalTiles = screen.getWidthTiles() * screen.getHeightTiles();
+        String rawDim = screen.getLevel().dimension().toString();
+        String dimension = rawDim.contains("/") ? rawDim.substring(rawDim.lastIndexOf('/') + 1).replace("]", "").trim() : rawDim;
+        BlockPos pos = screen.getOriginWallPos();
+
+        source.sendSuccess(() -> Component.translatable("serverbrowser.msg.info_header", screen.getId()), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_size",
+            screen.getWidthTiles(), screen.getHeightTiles(), totalTiles, screen.getFacing().getName()
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_resolution",
+            String.format("%.2f", screen.getScale()),
+            screen.getRenderWidth(), screen.getRenderHeight(),
+            screen.getPixelWidth(), screen.getPixelHeight()
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_fps",
+            screen.getFps(), config.maxFps
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_quality",
+            screen.getQuality(), config.maxQuality
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_url",
+            screen.getCurrentTarget() != null ? screen.getCurrentTarget() : "about:blank"
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_pos",
+            dimension, pos.getX(), pos.getY(), pos.getZ()
+        ), false);
     }
 
     private static int getWand(CommandSourceStack source) {

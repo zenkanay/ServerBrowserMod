@@ -71,6 +71,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser scroll [up\|down\|amount]` | Scroll page via command |
 | `/browser wand` | Reacquire wand for nearest display within 10 blocks |
 | `/browser list` | List active displays and current properties |
+| `/browser info` | View detailed properties of held display (alias: `/browser status`) |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
 | `/browser quality <quality>` | Set JPEG quality for held display (10 to 100, alias: `/browser qual`) |
 | `/browser res <scale>` | Set resolution scale for held display (alias: `/browser resolution`) |
@@ -82,6 +83,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser destroy_near` | Remove nearest display without holding wand |
 | `/browser destroy_id <id>` | Remove specific display by ID |
 | `/browser wand_id <id>` | Obtain Remote Wand for specific display by ID |
+| `/browser info_id <id>` | View detailed properties of display by ID |
 | `/browser fps_id <id> <fps>` | Set frame rate for display by ID |
 | `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
 | `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
