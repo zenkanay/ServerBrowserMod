@@ -286,29 +286,29 @@ public class DisplayManager {
             // 額縁は床ブロックの上面に上向き（UP）に設置
             screenFacing = Direction.UP;
             rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
-            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（足元側）が画面の下端
+            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（足元側）が画面の下端（奥側が画面の上端）
 
-            // プレイヤーの足元のブロック(below)の目の前から奥に向かって広がる
+            // プレイヤーの足元のブロック(below)の目の前から奥に向かって広がる（プレイヤー正面を中心に左右均等配置）
             // x=0, y=0（奥・左端）の基盤ブロック座標
-            originWallPos = playerPos.below().relative(forwardDir, heightTiles);
+            originWallPos = playerPos.below().relative(forwardDir, heightTiles).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
         } else if (pitch < -40.0f) {
             // 【天井（下向き）ディスプレイ】天井を見上げている場合
             // 額縁は天井ブロックの下面に下向き（DOWN）に設置
             screenFacing = Direction.DOWN;
             rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
-            downDir = forwardDir;                 // プレイヤーから見て前方（奥側）が画面の下端（頭上・手前側が画面の上端）
+            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（頭上側）が画面の下端（奥側が画面の上端）
 
-            // プレイヤーの頭上ブロック(above(3))の直上から奥に向かって広がる
-            // x=0, y=0（手前・左端）の基盤ブロック座標
-            originWallPos = playerPos.above(3);
+            // プレイヤーの頭上ブロック(above(3))の目の前から奥に向かって広がる（プレイヤー正面を中心に左右均等配置）
+            // x=0, y=0（奥・左端）の基盤ブロック座標
+            originWallPos = playerPos.above(3).relative(forwardDir, heightTiles).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
         } else {
             // 【通常の壁面ディスプレイ】水平を向いている場合
             screenFacing = forwardDir.getOpposite();
             rightDir = screenFacing.getCounterClockWise();
             downDir = Direction.DOWN;
 
-            // ディスプレイ（額縁）の左下角がプレイヤーの向いている方向の隣に位置し、壁はその1つ奥
-            BlockPos wallBaseCorner = playerPos.relative(forwardDir, 2);
+            // ディスプレイの幅に合わせてプレイヤーの正面を中心に左右均等配置
+            BlockPos wallBaseCorner = playerPos.relative(forwardDir, 2).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
             originWallPos = wallBaseCorner.above(heightTiles - 1);
         }
 

@@ -124,7 +124,7 @@ public class ScreenInstance {
         if (facing.getAxis() != Direction.Axis.Y) {
             return Direction.DOWN;
         }
-        return facing == Direction.DOWN ? Direction.NORTH : Direction.SOUTH;
+        return Direction.SOUTH;
     }
 
     /**
@@ -136,25 +136,13 @@ public class ScreenInstance {
         if (facing.getAxis() != Direction.Axis.Y) {
             return 0; // 垂直な壁面は通常向き（0）
         }
-        if (facing == Direction.DOWN) {
-            // 天井（下向き）ディスプレイ
-            return switch (downDir) {
-                case NORTH -> 0;
-                case EAST  -> 3;
-                case SOUTH -> 2;
-                case WEST  -> 1;
-                default    -> 0;
-            };
-        } else {
-            // 床（上向き）ディスプレイ
-            return switch (downDir) {
-                case SOUTH -> 0;
-                case WEST  -> 1;
-                case NORTH -> 2;
-                case EAST  -> 3;
-                default    -> 0;
-            };
-        }
+        return switch (downDir) {
+            case SOUTH -> 0;
+            case WEST  -> 1;
+            case NORTH -> 2;
+            case EAST  -> 3;
+            default    -> 0;
+        };
     }
 
     public int getId() { return id; }
@@ -887,9 +875,16 @@ public class ScreenInstance {
             g.fillRect(0, 0, 128, 128);
         }
 
+        boolean isFlippedY = (facing == Direction.DOWN);
+
         if (subW > 0 && subH > 0) {
             // getSubimage による不要なヒープアロケーションを完全撤廃（GCゼロアロケーション描画）
-            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
+            if (isFlippedY) {
+                // 天井ディスプレイの鏡像反転（Minecraftバニラレンダラーの仕様）を完全に相殺するため、上下反転して描画
+                g.drawImage(baseImage, 0, 0, subW, subH, sx, sy + subH, sx + subW, sy, null);
+            } else {
+                g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
+            }
         }
 
         // 入力選択中のハイライト表示
@@ -900,7 +895,8 @@ public class ScreenInstance {
             int boxTileTop = searchBoxGlobalY - sy;
             if (boxTileTop + searchBoxGlobalH > 0 && boxTileTop < 128) {
                 g.setColor(new Color(66, 133, 244, 180)); // Googleブルーのアクティブ枠
-                g.drawRoundRect(2, Math.max(2, boxTileTop), 124, Math.min(searchBoxGlobalH, 124), 8, 8);
+                int drawBoxY = isFlippedY ? (128 - boxTileTop - searchBoxGlobalH) : boxTileTop;
+                g.drawRoundRect(2, Math.max(2, drawBoxY), 124, Math.min(searchBoxGlobalH, 124), 8, 8);
             }
         }
 
@@ -908,8 +904,9 @@ public class ScreenInstance {
         if (drawPointer && pointerX >= 0 && pointerY >= 0) {
             int localPx = pointerX - sx;
             int localPy = pointerY - sy;
+            int drawPy = isFlippedY ? (127 - localPy) : localPy;
 
-            drawMouseCursor(g, localPx, localPy);
+            drawMouseCursor(g, localPx, drawPy, isFlippedY);
         }
 
         g.dispose();
@@ -937,29 +934,49 @@ public class ScreenInstance {
         );
     }
 
-    private void drawMouseCursor(Graphics2D g, int x, int y) {
-        // 洗練された白いマウスポインタ矢印（黒枠付き）
-        int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
-        int[] yPoints = { y, y + 13, y + 10, y + 15, y + 14, y + 9, y + 9, y + 6, y };
+    private void drawMouseCursor(Graphics2D g, int x, int y, boolean flipY) {
+        if (flipY) {
+            // 天井用: クライアント側の上下反転によって正立した矢印になるよう、下向き矢印を描画
+            int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
+            int[] yPoints = { y, y - 13, y - 10, y - 15, y - 14, y - 9, y - 9, y - 6, y };
 
-        // 外側黒枠
-        g.setColor(Color.BLACK);
-        g.fillPolygon(xPoints, yPoints, 9);
-        g.drawPolygon(xPoints, yPoints, 9);
+            g.setColor(Color.BLACK);
+            g.fillPolygon(xPoints, yPoints, 9);
+            g.drawPolygon(xPoints, yPoints, 9);
 
-        // 内側（通常は白、ドラッグ中はゴールド/黄色）
-        int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
-        int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
-        g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
-        g.fillPolygon(xInner, yInner, 9);
+            int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
+            int[] yInner = { y - 2, y - 11, y - 9, y - 13, y - 12, y - 8, y - 8, y - 5, y - 2 };
+            g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
+            g.fillPolygon(xInner, yInner, 9);
 
-        // 先端のハイライト点（通常は赤、ドラッグ中は鮮やかなオレンジ）
-        g.setColor(isDragging ? Color.ORANGE : Color.RED);
-        g.fillRect(x, y, 2, 2);
+            g.setColor(isDragging ? Color.ORANGE : Color.RED);
+            g.fillRect(x, y - 1, 2, 2);
+        } else {
+            // 通常用: 洗練された白いマウスポインタ矢印（黒枠付き）
+            int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
+            int[] yPoints = { y, y + 13, y + 10, y + 15, y + 14, y + 9, y + 9, y + 6, y };
+
+            // 外側黒枠
+            g.setColor(Color.BLACK);
+            g.fillPolygon(xPoints, yPoints, 9);
+            g.drawPolygon(xPoints, yPoints, 9);
+
+            // 内側（通常は白、ドラッグ中はゴールド/黄色）
+            int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
+            int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
+            g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
+            g.fillPolygon(xInner, yInner, 9);
+
+            // 先端のハイライト点（通常は赤、ドラッグ中は鮮やかなオレンジ）
+            g.setColor(isDragging ? Color.ORANGE : Color.RED);
+            g.fillRect(x, y, 2, 2);
+        }
     }
 
     public void resendToPlayer(ServerPlayer player) {
         if (baseImage == null && lastTileColors.isEmpty()) return;
+
+        boolean isFlippedY = (facing == Direction.DOWN);
 
         for (int ty = 0; ty < heightTiles; ty++) {
             for (int tx = 0; tx < widthTiles; tx++) {
@@ -980,7 +997,11 @@ public class ScreenInstance {
                         g.fillRect(0, 0, 128, 128);
                     }
                     if (subW > 0 && subH > 0) {
-                        g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
+                        if (isFlippedY) {
+                            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy + subH, sx + subW, sy, null);
+                        } else {
+                            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
+                        }
                     }
                     g.dispose();
                     colors = MapColorPalette.convertImageToMapBytes(tileImage);
