@@ -288,9 +288,9 @@ public class DisplayManager {
             rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
             downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（足元側）が画面の下端（奥側が画面の上端）
 
-            // プレイヤーの足元のブロック(below)の目の前から奥に向かって広がる（プレイヤー正面を中心に左右均等配置）
+            // プレイヤーの立ち位置が角（左端）になるよう、目の前から奥に向かって広がる
             // x=0, y=0（奥・左端）の基盤ブロック座標
-            originWallPos = playerPos.below().relative(forwardDir, heightTiles).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
+            originWallPos = playerPos.below().relative(forwardDir, heightTiles);
         } else if (pitch < -40.0f) {
             // 【天井（下向き）ディスプレイ】天井を見上げている場合
             // 額縁は天井ブロックの下面に下向き（DOWN）に設置
@@ -298,17 +298,17 @@ public class DisplayManager {
             rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
             downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（頭上側）が画面の下端（奥側が画面の上端）
 
-            // プレイヤーの頭上ブロック(above(3))の目の前から奥に向かって広がる（プレイヤー正面を中心に左右均等配置）
+            // プレイヤーの立ち位置が角（左端）になるよう、目の前から奥に向かって広がる
             // x=0, y=0（奥・左端）の基盤ブロック座標
-            originWallPos = playerPos.above(3).relative(forwardDir, heightTiles).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
+            originWallPos = playerPos.above(3).relative(forwardDir, heightTiles);
         } else {
             // 【通常の壁面ディスプレイ】水平を向いている場合
             screenFacing = forwardDir.getOpposite();
             rightDir = screenFacing.getCounterClockWise();
             downDir = Direction.DOWN;
 
-            // ディスプレイの幅に合わせてプレイヤーの正面を中心に左右均等配置
-            BlockPos wallBaseCorner = playerPos.relative(forwardDir, 2).relative(rightDir.getOpposite(), (widthTiles - 1) / 2);
+            // プレイヤーの立ち位置が角（左端）になり、右側へ広がる
+            BlockPos wallBaseCorner = playerPos.relative(forwardDir, 2);
             originWallPos = wallBaseCorner.above(heightTiles - 1);
         }
 

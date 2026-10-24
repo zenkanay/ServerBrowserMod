@@ -136,13 +136,25 @@ public class ScreenInstance {
         if (facing.getAxis() != Direction.Axis.Y) {
             return 0; // 垂直な壁面は通常向き（0）
         }
-        return switch (downDir) {
-            case SOUTH -> 0;
-            case WEST  -> 1;
-            case NORTH -> 2;
-            case EAST  -> 3;
-            default    -> 0;
-        };
+        if (facing == Direction.DOWN) {
+            // 天井（下向き）ディスプレイ: flipX（左右反転相殺）との合成
+            return switch (downDir) {
+                case NORTH -> 0; // forwardDir = SOUTH (奥がSOUTH, 手前がNORTH)
+                case WEST  -> 1; // forwardDir = EAST
+                case SOUTH -> 2; // forwardDir = NORTH (奥がNORTH, 手前がSOUTH)
+                case EAST  -> 3; // forwardDir = WEST
+                default    -> 0;
+            };
+        } else {
+            // 床（上向き）ディスプレイ
+            return switch (downDir) {
+                case SOUTH -> 0; // forwardDir = NORTH
+                case WEST  -> 1; // forwardDir = EAST
+                case NORTH -> 2; // forwardDir = SOUTH
+                case EAST  -> 3; // forwardDir = WEST
+                default    -> 0;
+            };
+        }
     }
 
     public int getId() { return id; }
@@ -498,6 +510,12 @@ public class ScreenInstance {
         }
         if (!hasNearbyPlayer) return;
 
+        // 前フレームの未送信タイルが残っている場合は新フレームをスキップし、
+        // 前フレームが画面最下部まで100%確実に送信完了するのを待機（FPSを自動調整して全画面完全描画を保証）
+        if (!dirtyTileIndices.isEmpty()) {
+            return;
+        }
+
         // フルスクリーン動画等で送られてきた解像度が画面と異なる場合、画面全体（全タイル）にぴったり高品質フィット
         BufferedImage normalizedImage = normalizeImage(fullImage);
         BufferedImage oldImage = this.baseImage;
@@ -520,8 +538,8 @@ public class ScreenInstance {
 
     /**
      * 未送信・変更タイルのフラッシュ送信
-     * クライアントの OpenGL 飽和を防ぐため 1回あたり最大 32 タイルずつ送信し、
-     * 残余タイルがある場合は自動で 40ms 後（次Tick）に再実行をスケジュールする。
+     * 画面全体が確実に下まで更新されるよう、1回あたり最大 64 タイル（小型・中型画面は一斉送信）送信し、
+     * 残余タイルがある場合は最速（20ms / 1Tick 後）で続きをフラッシュする。
      */
     public void flushDirtyTiles(MinecraftServer server) {
         if (server == null || baseImage == null) return;
@@ -537,9 +555,9 @@ public class ScreenInstance {
         if (!hasNearbyPlayer) return;
 
         final int totalTiles = widthTiles * heightTiles;
-        // バニラクライアントの OpenGL テクスチャ更新キューが飽和しない黄金比バジェット
-        // 小型画面（<= 32タイル）は一斉送信、中型・大型画面（> 32タイル）は 1フレームあたり最大 32 タイル
-        final int maxPacketsPerFrame = (totalTiles <= 32) ? totalTiles : 32;
+        // 小型・中型画面（<= 64タイル: 8x8や16x4画面）は1回で下まで全画面一括送信！
+        // 超巨大画面（> 64タイル）は 1フレームあたり最大 64 タイルずつ最速Tickで下まで送り切る
+        final int maxPacketsPerFrame = (totalTiles <= 64) ? totalTiles : 64;
 
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
 
@@ -585,7 +603,7 @@ public class ScreenInstance {
             });
         }
 
-        // 4. まだ未送信タイルが残っている場合、静止画でも全タイルが完全に表示されるよう自動で残りをスケジュールフラッシュ！
+        // 4. まだ未送信タイルが残っている場合、画面下部まで確実に描き切るため最速（20ms / 1Tick 後）にスケジュールフラッシュ！
         if (!dirtyTileIndices.isEmpty()) {
             scheduleFlush(server);
         }
@@ -593,7 +611,7 @@ public class ScreenInstance {
 
     private void scheduleFlush(MinecraftServer server) {
         if (isFlushScheduled.compareAndSet(false, true)) {
-            java.util.concurrent.CompletableFuture.delayedExecutor(40, java.util.concurrent.TimeUnit.MILLISECONDS)
+            java.util.concurrent.CompletableFuture.delayedExecutor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .execute(() -> {
                     isFlushScheduled.set(false);
                     try {
@@ -875,13 +893,13 @@ public class ScreenInstance {
             g.fillRect(0, 0, 128, 128);
         }
 
-        boolean isFlippedY = (facing == Direction.DOWN);
+        boolean isCeiling = (facing == Direction.DOWN);
 
         if (subW > 0 && subH > 0) {
             // getSubimage による不要なヒープアロケーションを完全撤廃（GCゼロアロケーション描画）
-            if (isFlippedY) {
-                // 天井ディスプレイの鏡像反転（Minecraftバニラレンダラーの仕様）を完全に相殺するため、上下反転して描画
-                g.drawImage(baseImage, 0, 0, subW, subH, sx, sy + subH, sx + subW, sy, null);
+            if (isCeiling) {
+                // 天井ディスプレイの鏡像反転（Minecraftバニラレンダラーの仕様）を完全に相殺するため、左右反転して描画
+                g.drawImage(baseImage, 0, 0, subW, subH, sx + subW, sy, sx, sy + subH, null);
             } else {
                 g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
             }
@@ -895,8 +913,7 @@ public class ScreenInstance {
             int boxTileTop = searchBoxGlobalY - sy;
             if (boxTileTop + searchBoxGlobalH > 0 && boxTileTop < 128) {
                 g.setColor(new Color(66, 133, 244, 180)); // Googleブルーのアクティブ枠
-                int drawBoxY = isFlippedY ? (128 - boxTileTop - searchBoxGlobalH) : boxTileTop;
-                g.drawRoundRect(2, Math.max(2, drawBoxY), 124, Math.min(searchBoxGlobalH, 124), 8, 8);
+                g.drawRoundRect(2, Math.max(2, boxTileTop), 124, Math.min(searchBoxGlobalH, 124), 8, 8);
             }
         }
 
@@ -904,9 +921,9 @@ public class ScreenInstance {
         if (drawPointer && pointerX >= 0 && pointerY >= 0) {
             int localPx = pointerX - sx;
             int localPy = pointerY - sy;
-            int drawPy = isFlippedY ? (127 - localPy) : localPy;
+            int drawPx = isCeiling ? (127 - localPx) : localPx;
 
-            drawMouseCursor(g, localPx, drawPy, isFlippedY);
+            drawMouseCursor(g, drawPx, localPy, isCeiling);
         }
 
         g.dispose();
@@ -934,23 +951,23 @@ public class ScreenInstance {
         );
     }
 
-    private void drawMouseCursor(Graphics2D g, int x, int y, boolean flipY) {
-        if (flipY) {
-            // 天井用: クライアント側の上下反転によって正立した矢印になるよう、下向き矢印を描画
-            int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
-            int[] yPoints = { y, y - 13, y - 10, y - 15, y - 14, y - 9, y - 9, y - 6, y };
+    private void drawMouseCursor(Graphics2D g, int x, int y, boolean flipX) {
+        if (flipX) {
+            // 天井用: クライアント側の左右反転によって正立した矢印になるよう、左向き矢印を描画
+            int[] xPoints = { x, x, x - 4, x - 6, x - 9, x - 7, x - 11, x - 7, x };
+            int[] yPoints = { y, y + 13, y + 10, y + 15, y + 14, y + 9, y + 9, y + 6, y };
 
             g.setColor(Color.BLACK);
             g.fillPolygon(xPoints, yPoints, 9);
             g.drawPolygon(xPoints, yPoints, 9);
 
-            int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
-            int[] yInner = { y - 2, y - 11, y - 9, y - 13, y - 12, y - 8, y - 8, y - 5, y - 2 };
+            int[] xInner = { x - 1, x - 1, x - 4, x - 6, x - 8, x - 6, x - 9, x - 6, x - 1 };
+            int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
             g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
             g.fillPolygon(xInner, yInner, 9);
 
             g.setColor(isDragging ? Color.ORANGE : Color.RED);
-            g.fillRect(x, y - 1, 2, 2);
+            g.fillRect(x - 1, y, 2, 2);
         } else {
             // 通常用: 洗練された白いマウスポインタ矢印（黒枠付き）
             int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
@@ -976,7 +993,7 @@ public class ScreenInstance {
     public void resendToPlayer(ServerPlayer player) {
         if (baseImage == null && lastTileColors.isEmpty()) return;
 
-        boolean isFlippedY = (facing == Direction.DOWN);
+        boolean isCeiling = (facing == Direction.DOWN);
 
         for (int ty = 0; ty < heightTiles; ty++) {
             for (int tx = 0; tx < widthTiles; tx++) {
@@ -997,8 +1014,8 @@ public class ScreenInstance {
                         g.fillRect(0, 0, 128, 128);
                     }
                     if (subW > 0 && subH > 0) {
-                        if (isFlippedY) {
-                            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy + subH, sx + subW, sy, null);
+                        if (isCeiling) {
+                            g.drawImage(baseImage, 0, 0, subW, subH, sx + subW, sy, sx, sy + subH, null);
                         } else {
                             g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
                         }
