@@ -89,7 +89,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
 | `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 60) |
 | `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (10 to 100) |
-| `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.5 to 4.0) |
+| `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.01+) |
 | `/browser reset` | Delete all displays and reset screen ID counter |
 
 ---
@@ -114,7 +114,7 @@ Configuration is located at `config/serverbrowser.json`:
   "defaultFps": 14,
   "maxQuality": 100,
   "defaultQuality": 75,
-  "maxScale": 2.0,
+  "maxScale": 10.0,
   "defaultScale": 1.0
 }
 ```

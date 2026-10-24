@@ -742,7 +742,7 @@ public class DisplayManager {
             screen.setQuality(targetQual);
         }
         if (scale != null) {
-            double targetScale = Math.max(0.25, Math.min(config.maxScale, scale));
+            double targetScale = Math.max(0.01, Math.min(config.maxScale, scale));
             screen.setScale(targetScale);
         }
 

@@ -209,18 +209,18 @@ public class BrowserCommand {
                 )
                 // 18. 解像度スケール設定: /browser res <倍率>, /browser resolution <倍率>, /browser res_id <id> <倍率>
                 .then(Commands.literal("res")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
                         .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
                 .then(Commands.literal("resolution")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
                         .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
                 .then(Commands.literal("res_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
                             .executes(ctx -> setScreenScaleById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), DoubleArgumentType.getDouble(ctx, "scale")))
                         )
                     )
@@ -237,7 +237,7 @@ public class BrowserCommand {
                     )
                 )
                 .then(Commands.literal("max_res")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.5, 4.0))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
                         .executes(ctx -> setServerMaxScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
@@ -864,7 +864,7 @@ public class BrowserCommand {
 
             double scale = Math.round(rawScale * 100.0) / 100.0;
             ServerBrowserConfig config = ServerBrowserConfig.get();
-            config.maxScale = Math.max(0.5, Math.min(4.0, scale));
+            config.maxScale = Math.max(0.01, scale);
             ServerBrowserConfig.save();
 
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_scale_set", String.format("%.2f", config.maxScale)), true);

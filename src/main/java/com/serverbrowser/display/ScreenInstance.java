@@ -127,8 +127,8 @@ public class ScreenInstance {
     public void setQuality(int quality) { this.quality = quality; }
     public double getScale() { return scale; }
     public void setScale(double scale) { this.scale = scale; }
-    public int getRenderWidth() { return Math.max(128, (int) Math.round(getPixelWidth() * scale)); }
-    public int getRenderHeight() { return Math.max(128, (int) Math.round(getPixelHeight() * scale)); }
+    public int getRenderWidth() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelWidth() * scale))); }
+    public int getRenderHeight() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelHeight() * scale))); }
 
     public void buildScreen() {
         Direction rightDir = facing.getCounterClockWise();

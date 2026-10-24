@@ -77,7 +77,7 @@
   "serverbrowser.help.res_id": "§c/browser res_id <ID> <倍率> §7- 指定画面の解像度倍率を変更",
   "serverbrowser.help.max_fps": "§c/browser max_fps <FPS> §7- サーバー全体の最大FPS上限を設定 (1〜60)",
   "serverbrowser.help.max_quality": "§c/browser max_quality <品質> §7- サーバー全体の最大JPEG品質上限を設定 (10〜100)",
-  "serverbrowser.help.max_res": "§c/browser max_res <倍率> §7- サーバー全体の最大解像度スケール上限を設定 (0.5〜4.0)",
+  "serverbrowser.help.max_res": "§c/browser max_res <倍率> §7- サーバー全体の最大解像度スケール上限を設定 (0.01〜)",
   "serverbrowser.help.reset": "§c/browser reset §7- 全画面を一括消去し、番号を #1 に完全リセット",
   "serverbrowser.help.controls_title": "§b【リモコン棒操作 (PC同様のマウス操作)】",
   "serverbrowser.help.controls_right": "§f・右クリック: クリック (素早く2回でダブルクリック)",

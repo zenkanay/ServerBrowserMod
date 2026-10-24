@@ -76,7 +76,7 @@
   "serverbrowser.help.res_id": "§c/browser res_id <id> <scale> §7- Change resolution scale for display by ID",
   "serverbrowser.help.max_fps": "§c/browser max_fps <FPS> §7- Set server-wide maximum FPS limit (1-60)",
   "serverbrowser.help.max_quality": "§c/browser max_quality <quality> §7- Set server-wide maximum JPEG quality limit (10-100)",
-  "serverbrowser.help.max_res": "§c/browser max_res <scale> §7- Set server-wide maximum resolution scale limit (0.5-4.0)",
+  "serverbrowser.help.max_res": "§c/browser max_res <scale> §7- Set server-wide maximum resolution scale limit (0.01+)",
   "serverbrowser.help.reset": "§c/browser reset §7- Remove all displays and reset counter to #1",
   "serverbrowser.help.controls_title": "§b【Remote Wand Controls (Ranged Support)】",
   "serverbrowser.help.controls_right": "§f- Right Click: Mouse Click (Select / Focus)",

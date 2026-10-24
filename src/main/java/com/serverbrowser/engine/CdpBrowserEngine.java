@@ -725,8 +725,8 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
             // 解像度設定
             Map<String, Object> metrics = new HashMap<>();
-            metrics.put("width", Math.max(128, width));
-            metrics.put("height", Math.max(128, height));
+            metrics.put("width", Math.max(16, Math.min(16384, width)));
+            metrics.put("height", Math.max(16, Math.min(16384, height)));
             metrics.put("deviceScaleFactor", 1);
             metrics.put("mobile", false);
             sendCommand("Emulation.setDeviceMetricsOverride", metrics).get(2, TimeUnit.SECONDS);
@@ -1187,10 +1187,10 @@ public class CdpBrowserEngine implements IBrowserEngine {
             try {
                 this.targetQuality = Math.max(10, Math.min(100, quality));
                 this.targetFps = Math.max(1, Math.min(60, fps));
-                this.scale = Math.max(0.25, Math.min(4.0, scale));
+                this.scale = Math.max(0.01, scale);
 
-                int renderW = Math.max(128, (int) Math.round(baseWidth * this.scale));
-                int renderH = Math.max(128, (int) Math.round(baseHeight * this.scale));
+                int renderW = Math.max(16, Math.min(16384, (int) Math.round(baseWidth * this.scale)));
+                int renderH = Math.max(16, Math.min(16384, (int) Math.round(baseHeight * this.scale)));
                 this.currentWidth = renderW;
                 this.currentHeight = renderH;
 
