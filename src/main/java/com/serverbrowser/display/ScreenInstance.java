@@ -42,6 +42,16 @@ public class ScreenInstance {
     // タイルごとの前回収集色配列キャッシュ（差分送信によるパケット量 80% 削減）
     private final Map<Integer, byte[]> lastTileColors = new ConcurrentHashMap<>();
 
+    // 巨大スクリーン用ダブルバッファリング（GCゼロアロケーション）
+    private BufferedImage doubleBufferA = null;
+    private BufferedImage doubleBufferB = null;
+    private boolean useBufferA = true;
+    private int packetScanStartTile = 0;
+
+    // タイルレンダリング用再利用バッファ
+    private static final ThreadLocal<BufferedImage> REUSABLE_TILE_IMAGE =
+        ThreadLocal.withInitial(() -> new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB));
+
     private String currentTarget = "https://www.google.com";
     private int scrollY = 0;
     private BufferedImage baseImage = null;
@@ -368,9 +378,19 @@ public class ScreenInstance {
             return src;
         }
 
-        BufferedImage normalized = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2 = normalized.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        BufferedImage targetBuffer = useBufferA ? doubleBufferA : doubleBufferB;
+        if (targetBuffer == null || targetBuffer.getWidth() != targetW || targetBuffer.getHeight() != targetH) {
+            targetBuffer = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB);
+            if (useBufferA) doubleBufferA = targetBuffer; else doubleBufferB = targetBuffer;
+        }
+        useBufferA = !useBufferA;
+
+        Graphics2D g2 = targetBuffer.createGraphics();
+        if (scale < 1.0) {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        } else {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        }
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
 
         // 全体を黒でクリア
@@ -400,7 +420,7 @@ public class ScreenInstance {
 
         g2.drawImage(src, drawX, drawY, drawW, drawH, null);
         g2.dispose();
-        return normalized;
+        return targetBuffer;
     }
 
     public void updateDisplay(BufferedImage fullImage, MinecraftServer server) {
@@ -433,16 +453,26 @@ public class ScreenInstance {
 
         // ワーカースレッド側で全タイルの差分判定とパケット生成を完了させる
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
-        for (int ty = 0; ty < heightTiles; ty++) {
-            for (int tx = 0; tx < widthTiles; tx++) {
-                boolean hasPointer = (!isPointerIdle && tx == lastPointerTileX && ty == lastPointerTileY);
-                if (oldImage != null && !hasPointer && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
-                    continue;
-                }
+        int totalTiles = widthTiles * heightTiles;
+        // 巨大スクリーン（タイルの合計 > 64）の場合、1フレームあたりの最大パケット数（バジェット）を設定してクライアントのフリーズを防止
+        int maxPacketsPerFrame = (totalTiles > 64) ? Math.min(128, Math.max(32, totalTiles / 3)) : totalTiles;
 
-                ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, hasPointer);
-                if (packet != null) {
-                    packetsToSend.add(packet);
+        for (int i = 0; i < totalTiles; i++) {
+            int tileIndex = (packetScanStartTile + i) % totalTiles;
+            int tx = tileIndex % widthTiles;
+            int ty = tileIndex / widthTiles;
+
+            boolean hasPointer = (!isPointerIdle && tx == lastPointerTileX && ty == lastPointerTileY);
+            if (oldImage != null && !hasPointer && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
+                continue;
+            }
+
+            ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, hasPointer);
+            if (packet != null) {
+                packetsToSend.add(packet);
+                if (packetsToSend.size() >= maxPacketsPerFrame) {
+                    packetScanStartTile = (tileIndex + 1) % totalTiles;
+                    break;
                 }
             }
         }
@@ -688,7 +718,7 @@ public class ScreenInstance {
         int sx = tx * 128;
         int sy = ty * 128;
 
-        BufferedImage tileImage = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
+        BufferedImage tileImage = REUSABLE_TILE_IMAGE.get();
         Graphics2D g = tileImage.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
