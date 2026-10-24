@@ -316,6 +316,10 @@ public class CdpBrowserEngine implements IBrowserEngine {
      * スクリーン専用のタブセッションを取得（ディスプレイごとの独立 BrowserContext / 専用メモリ空間）
      */
     public synchronized TabSession getOrCreateSession(int screenId, String initialUrl, int width, int height) throws Exception {
+        return getOrCreateSession(screenId, initialUrl, width, height, 75, 14, 1.0);
+    }
+
+    public synchronized TabSession getOrCreateSession(int screenId, String initialUrl, int width, int height, int quality, int fps, double scale) throws Exception {
         ensureBrowserStarted();
 
         TabSession session = screenTabs.get(screenId);
@@ -334,6 +338,9 @@ public class CdpBrowserEngine implements IBrowserEngine {
         String targetId = null;
         String wsUrl = null;
 
+        int renderW = Math.max(16, Math.min(16384, (int) Math.round(width * Math.max(0.01, scale))));
+        int renderH = Math.max(16, Math.min(16384, (int) Math.round(height * Math.max(0.01, scale))));
+
         // 【独立メモリ空間】各ディスプレイ専用の新しい BrowserContext を作成
         // ディスプレイごとに Cookie・LocalStorage・Session が完全に分離され、リロードしてもデータは保持！
         try {
@@ -347,8 +354,8 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 Map<String, Object> targetParams = new HashMap<>();
                 targetParams.put("url", targetUrl);
                 targetParams.put("browserContextId", browserContextId);
-                targetParams.put("width", Math.max(128, width));
-                targetParams.put("height", Math.max(128, height));
+                targetParams.put("width", Math.max(128, renderW));
+                targetParams.put("height", Math.max(128, renderH));
 
                 String targetRes = sendBrowserCommand("Target.createTarget", targetParams).get(3, TimeUnit.SECONDS);
                 Matcher tm = Pattern.compile("\"targetId\":\\s*\"([^\"]+)\"").matcher(targetRes);
@@ -394,7 +401,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
         LOGGER.info("Created isolated memory tab for screen #{}: contextId={}, targetId={}, ws={}", screenId, browserContextId, targetId, wsUrl);
 
-        TabSession newSession = new TabSession(screenId, browserContextId, targetId, wsUrl, targetUrl);
+        TabSession newSession = new TabSession(screenId, browserContextId, targetId, wsUrl, targetUrl, quality, fps, scale);
         newSession.connect(width, height);
         screenTabs.put(screenId, newSession);
 
@@ -484,6 +491,24 @@ public class CdpBrowserEngine implements IBrowserEngine {
     public BufferedImage renderPageForScreen(int screenId, String target, int width, int height, int scrollY) throws Exception {
         TabSession session = getOrCreateSession(screenId, target, width, height);
         return session.navigateAndCapture(target, width, height);
+    }
+
+    public BufferedImage renderPageForScreen(int screenId, String target, int width, int height, int quality, int fps, double scale, int scrollY) throws Exception {
+        TabSession session = getOrCreateSession(screenId, target, width, height, quality, fps, scale);
+        session.updateSettings(width, height, quality, fps, scale);
+        return session.navigateAndCapture(target, width, height);
+    }
+
+    public void openTab(int screenId, String initialUrl, int width, int height, int quality, int fps, double scale) {
+        try {
+            TabSession session = getOrCreateSession(screenId, initialUrl, width, height, quality, fps, scale);
+            session.updateSettings(width, height, quality, fps, scale);
+            if (initialUrl != null && !initialUrl.isEmpty()) {
+                session.navigateAndCapture(initialUrl, width, height);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to open tab for screen #{}: {}", screenId, e.getMessage());
+        }
     }
 
     public BufferedImage performClickForScreen(int screenId, int x, int y, int clickCount, int width, int height) throws Exception {
@@ -632,11 +657,18 @@ public class CdpBrowserEngine implements IBrowserEngine {
         private double scale = 1.0;
 
         public TabSession(int screenId, String browserContextId, String targetId, String wsUrl, String currentUrl) {
+            this(screenId, browserContextId, targetId, wsUrl, currentUrl, 75, 14, 1.0);
+        }
+
+        public TabSession(int screenId, String browserContextId, String targetId, String wsUrl, String currentUrl, int quality, int fps, double scale) {
             this.screenId = screenId;
             this.browserContextId = browserContextId;
             this.targetId = targetId;
             this.wsUrl = wsUrl;
             this.currentUrl = currentUrl;
+            this.targetQuality = Math.max(10, Math.min(100, quality));
+            this.targetFps = Math.max(1, Math.min(60, fps));
+            this.scale = Math.max(0.01, scale);
         }
 
         public String getBrowserContextId() { return browserContextId; }
@@ -723,18 +755,23 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "})();";
             sendCommand("Page.addScriptToEvaluateOnNewDocument", Map.of("source", stealthJs)).get(2, TimeUnit.SECONDS);
 
-            // 解像度設定
+            // 解像度設定（指定された解像度スケールを初期から正確に反映）
+            int renderW = Math.max(16, Math.min(16384, (int) Math.round(width * this.scale)));
+            int renderH = Math.max(16, Math.min(16384, (int) Math.round(height * this.scale)));
+            this.currentWidth = renderW;
+            this.currentHeight = renderH;
+
             Map<String, Object> metrics = new HashMap<>();
-            metrics.put("width", Math.max(16, Math.min(16384, width)));
-            metrics.put("height", Math.max(16, Math.min(16384, height)));
+            metrics.put("width", renderW);
+            metrics.put("height", renderH);
             metrics.put("deviceScaleFactor", 1);
             metrics.put("mobile", false);
             sendCommand("Emulation.setDeviceMetricsOverride", metrics).get(2, TimeUnit.SECONDS);
 
             connected = true;
 
-            // 超高速 GPU Screencast ストリーミング開始（動画やアニメーションのフレームを Chrome 側からゼロ遅延で自律受信！）
-            startScreencast(width, height);
+            // 超高速 GPU Screencast ストリーミング開始（目標 FPS・品質・解像度を完全に反映！）
+            startScreencast(renderW, renderH, this.targetQuality, this.targetFps);
         }
 
         public synchronized CompletableFuture<String> sendCommand(String method, Map<String, Object> params) {

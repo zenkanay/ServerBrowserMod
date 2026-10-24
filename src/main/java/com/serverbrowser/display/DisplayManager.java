@@ -1,5 +1,8 @@
 package com.serverbrowser.display;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 import com.serverbrowser.config.ServerBrowserConfig;
 import com.serverbrowser.engine.BuiltinSearchEngine;
 import com.serverbrowser.engine.CdpBrowserEngine;
@@ -26,6 +29,8 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -580,6 +585,23 @@ public class DisplayManager {
         }
     }
 
+    public static class ScreenSaveData {
+        public int id;
+        public String dimension;
+        public int originX;
+        public int originY;
+        public int originZ;
+        public String facing;
+        public int widthTiles;
+        public int heightTiles;
+        public int baseMapId;
+        public int fps;
+        public int quality;
+        public double scale;
+        public String url;
+        public int scrollY;
+    }
+
     public synchronized void saveScreens(MinecraftServer server) {
         if (server == null) return;
         try {
@@ -592,38 +614,39 @@ public class DisplayManager {
                 return;
             }
 
-            StringBuilder json = new StringBuilder("[\n");
-            boolean first = true;
+            List<ScreenSaveData> list = new ArrayList<>();
             for (ScreenInstance s : screens.values()) {
                 // ブラウザ側で遷移した最新の URL を取得して確実に永続化！
                 if (cdpEngine != null && cdpEngine.isAvailable()) {
-                    String liveUrl = cdpEngine.getActiveUrl(s.getId());
-                    if (liveUrl != null && !liveUrl.isEmpty()) {
-                        s.setCurrentTarget(liveUrl);
-                    }
+                    try {
+                        String liveUrl = cdpEngine.getActiveUrl(s.getId());
+                        if (liveUrl != null && !liveUrl.isEmpty()) {
+                            s.setCurrentTarget(liveUrl);
+                        }
+                    } catch (Exception ignored) {}
                 }
 
-                if (!first) json.append(",\n");
-                json.append("  {\n");
-                json.append("    \"id\": ").append(s.getId()).append(",\n");
-                json.append("    \"dimension\": \"").append(s.getLevel().dimension().toString()).append("\",\n");
-                json.append("    \"originX\": ").append(s.getOriginWallPos().getX()).append(",\n");
-                json.append("    \"originY\": ").append(s.getOriginWallPos().getY()).append(",\n");
-                json.append("    \"originZ\": ").append(s.getOriginWallPos().getZ()).append(",\n");
-                json.append("    \"facing\": \"").append(s.getFacing().getName()).append("\",\n");
-                json.append("    \"widthTiles\": ").append(s.getWidthTiles()).append(",\n");
-                json.append("    \"heightTiles\": ").append(s.getHeightTiles()).append(",\n");
-                json.append("    \"fps\": ").append(s.getFps()).append(",\n");
-                json.append("    \"quality\": ").append(s.getQuality()).append(",\n");
-                json.append("    \"scale\": ").append(s.getScale()).append(",\n");
-                json.append("    \"url\": \"").append(s.getCurrentTarget().replace("\"", "\\\"")).append("\",\n");
-                json.append("    \"scrollY\": ").append(s.getScrollY()).append("\n");
-                json.append("  }");
-                first = false;
+                ScreenSaveData data = new ScreenSaveData();
+                data.id = s.getId();
+                data.dimension = s.getLevel().dimension().toString();
+                data.originX = s.getOriginWallPos().getX();
+                data.originY = s.getOriginWallPos().getY();
+                data.originZ = s.getOriginWallPos().getZ();
+                data.facing = s.getFacing().getName();
+                data.widthTiles = s.getWidthTiles();
+                data.heightTiles = s.getHeightTiles();
+                data.baseMapId = s.getBaseMapId();
+                data.fps = s.getFps();
+                data.quality = s.getQuality();
+                data.scale = s.getScale();
+                data.url = s.getCurrentTarget();
+                data.scrollY = s.getScrollY();
+                list.add(data);
             }
-            json.append("\n]");
 
-            Files.writeString(saveFile, json.toString());
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            String jsonStr = gson.toJson(list);
+            Files.writeString(saveFile, jsonStr, StandardCharsets.UTF_8);
             LOGGER.info("Saved {} screens to {}", screens.size(), saveFile);
         } catch (Exception e) {
             LOGGER.error("Failed to save screens: {}", e.getMessage(), e);
@@ -641,58 +664,53 @@ public class DisplayManager {
                 return;
             }
 
-            String content = Files.readString(saveFile);
-            Pattern objPattern = Pattern.compile("\\{([^{}]+)\\}");
-            Matcher objMatcher = objPattern.matcher(content);
+            String content = Files.readString(saveFile, StandardCharsets.UTF_8);
+            Gson gson = new Gson();
+            Type listType = new TypeToken<List<ScreenSaveData>>(){}.getType();
+            List<ScreenSaveData> list = gson.fromJson(content, listType);
 
-            while (objMatcher.find()) {
-                String obj = objMatcher.group(1);
-                int id = extractInt(obj, "id");
-                String dim = extractString(obj, "dimension");
-                int ox = extractInt(obj, "originX");
-                int oy = extractInt(obj, "originY");
-                int oz = extractInt(obj, "originZ");
-                String facingStr = extractString(obj, "facing");
-                int w = extractInt(obj, "widthTiles");
-                int h = extractInt(obj, "heightTiles");
-                String url = extractString(obj, "url");
-                int scrollY = extractInt(obj, "scrollY");
-                int savedFps = extractInt(obj, "fps");
-                int savedQuality = extractInt(obj, "quality");
-                double savedScale = extractDouble(obj, "scale");
+            if (list == null || list.isEmpty()) {
+                LOGGER.info("Saved screens file was empty at {}", saveFile);
+                return;
+            }
 
-                if (id <= 0 || w <= 0 || h <= 0) continue;
+            for (ScreenSaveData data : list) {
+                if (data.id <= 0 || data.widthTiles <= 0 || data.heightTiles <= 0) continue;
 
                 ServerLevel level = server.overworld();
                 for (ServerLevel sl : server.getAllLevels()) {
-                    if (sl.dimension().toString().equals(dim) || sl.dimension().toString().contains(dim)) {
+                    if (sl.dimension().toString().equals(data.dimension) || sl.dimension().toString().contains(data.dimension)) {
                         level = sl;
                         break;
                     }
                 }
 
-                Direction facing = Direction.byName(facingStr);
+                Direction facing = Direction.byName(data.facing);
                 if (facing == null) facing = Direction.SOUTH;
 
-                BlockPos origin = new BlockPos(ox, oy, oz);
-                ScreenInstance screen = new ScreenInstance(id, level, origin, facing, w, h);
-                screen.setCurrentTarget(url != null && !url.isEmpty() ? url : "https://www.google.com");
-                screen.setScrollY(scrollY);
-                if (savedFps > 0) screen.setFps(savedFps);
-                if (savedQuality > 0) screen.setQuality(savedQuality);
-                if (savedScale > 0.0) screen.setScale(savedScale);
+                BlockPos origin = new BlockPos(data.originX, data.originY, data.originZ);
+                int baseMapId = data.baseMapId > 0 ? data.baseMapId : allocateBaseMapId();
+                ScreenInstance screen = new ScreenInstance(data.id, level, origin, facing, data.widthTiles, data.heightTiles, baseMapId);
+                screen.setCurrentTarget(data.url != null && !data.url.isEmpty() ? data.url : "https://www.google.com");
+                screen.setScrollY(data.scrollY);
+                if (data.fps > 0) screen.setFps(data.fps);
+                if (data.quality > 0) screen.setQuality(data.quality);
+                if (data.scale > 0.0) screen.setScale(data.scale);
 
                 // 額縁の再バインド・再構築
                 screen.rebindOrRebuildScreen();
-                screens.put(id, screen);
+                screens.put(data.id, screen);
 
-                // 初期描画をスケジュール
+                // 初期描画をスケジュール（復元したプロパティ scale, fps, quality を CDP に確実に同期！）
                 final ScreenInstance finalScreen = screen;
                 getRenderExecutor().submit(() -> {
                     try {
                         BufferedImage img;
                         if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
-                            img = cdpEngine.renderPageForScreen(id, finalScreen.getCurrentTarget(), finalScreen.getPixelWidth(), finalScreen.getPixelHeight(), finalScreen.getScrollY());
+                            img = cdpEngine.renderPageForScreen(finalScreen.getId(), finalScreen.getCurrentTarget(),
+                                finalScreen.getPixelWidth(), finalScreen.getPixelHeight(),
+                                finalScreen.getQuality(), finalScreen.getFps(), finalScreen.getScale(),
+                                finalScreen.getScrollY());
                         } else {
                             img = builtinEngine.renderPage(finalScreen.getCurrentTarget(), finalScreen.getPixelWidth(), finalScreen.getPixelHeight(), finalScreen.getScrollY());
                         }
@@ -700,7 +718,7 @@ public class DisplayManager {
                             server.execute(() -> finalScreen.updateDisplay(img, server));
                         }
                     } catch (Exception ex) {
-                        LOGGER.warn("Failed to load initial page for restored screen #{}: {}", id, ex.getMessage());
+                        LOGGER.warn("Failed to load initial page for restored screen #{}: {}", finalScreen.getId(), ex.getMessage());
                     }
                 });
             }
@@ -709,21 +727,6 @@ public class DisplayManager {
         } catch (Exception e) {
             LOGGER.error("Failed to load screens: {}", e.getMessage(), e);
         }
-    }
-
-    private int extractInt(String json, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\":\\s*(-?\\d+)").matcher(json);
-        return m.find() ? Integer.parseInt(m.group(1)) : 0;
-    }
-
-    private double extractDouble(String json, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\":\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
-        return m.find() ? Double.parseDouble(m.group(1)) : 0.0;
-    }
-
-    private String extractString(String json, String key) {
-        Matcher m = Pattern.compile("\"" + key + "\":\\s*\"([^\"]+)\"").matcher(json);
-        return m.find() ? m.group(1) : "";
     }
 
     /**
@@ -785,8 +788,11 @@ public class DisplayManager {
             BufferedImage image = null;
             try {
                 if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
-                    // スクリーン専用の独立した Chrome タブでレンダリング（干渉ゼロ）
-                    image = cdpEngine.renderPageForScreen(screenId, target, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
+                    // スクリーン専用の独立した Chrome タブでレンダリング（個別プロパティ fps, quality, scale を完全適用）
+                    image = cdpEngine.renderPageForScreen(screenId, target,
+                        screen.getPixelWidth(), screen.getPixelHeight(),
+                        screen.getQuality(), screen.getFps(), screen.getScale(),
+                        screen.getScrollY());
                 } else {
                     image = builtinEngine.renderPage(target, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
                 }
