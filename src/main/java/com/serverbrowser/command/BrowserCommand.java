@@ -60,6 +60,10 @@ public class BrowserCommand {
                 .then(Commands.literal("reset")
                     .executes(ctx -> resetScreens(ctx.getSource()))
                 )
+                // 5-2. ホーム（初期サイトへ戻る）: /browser home
+                .then(Commands.literal("home")
+                    .executes(ctx -> goHome(ctx.getSource()))
+                )
                 // 6. ページ移動・検索: /browser open <URLまたは検索ワード>
                 .then(Commands.literal("open")
                     .then(Commands.argument("url", StringArgumentType.greedyString())
@@ -242,12 +246,19 @@ public class BrowserCommand {
                     )
                 )
         );
+
+        // /bhome ショートカットコマンド
+        dispatcher.register(
+            Commands.literal("bhome")
+                .executes(ctx -> goHome(ctx.getSource()))
+        );
     }
 
     private static int showHelp(CommandSourceStack source) {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.title"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.create"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.home"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.open"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.google"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.reload"), false);
@@ -390,6 +401,21 @@ public class BrowserCommand {
             }
             boolean success = DisplayManager.getInstance().resetAllScreens(player, source.getServer());
             return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int goHome(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            String homeUrl = com.serverbrowser.config.ServerBrowserConfig.get().defaultUrl;
+            if (homeUrl == null || homeUrl.isEmpty()) {
+                homeUrl = "https://www.google.com";
+            }
+            DisplayManager.getInstance().navigate(player, homeUrl, source.getServer());
+            return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));
             return 0;

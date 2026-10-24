@@ -52,6 +52,7 @@
   "serverbrowser.help.title": "§6==== [ServerBrowser 厳選コマンド] ====",
   "serverbrowser.help.create": "§e/browser create [横] [縦] §7- 画面を設置 (専用リモコン棒を入手)",
   "serverbrowser.help.destroy": "§e/browser destroy §7- 手持ちの棒に対応する画面と棒を撤去",
+  "serverbrowser.help.home": "§e/browser home §7- 初期サイト (ホーム) に戻る (短縮: /bhome)",
   "serverbrowser.help.open": "§e/browser open <URL/検索語> §7- ページを開く / Google検索",
   "serverbrowser.help.google": "§e/browser google <検索語> §7- Google検索を実行",
   "serverbrowser.help.reload": "§e/browser reload §7- ページを再読み込み (リロード)",
