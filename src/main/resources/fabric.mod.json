@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "serverbrowser",
+	"version": "${version}",
+	"name": "Server Browser",
+	"description": "Pure server-side Minecraft mod that displays web browsers and Google search in-game on item frame screens.",
+	"authors": [
+		"Antigravity"
+	],
+	"license": "MIT",
+	"icon": "assets/serverbrowser/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.serverbrowser.ServerBrowserMod"
+		]
+	},
+	"mixins": [
+		"serverbrowser.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

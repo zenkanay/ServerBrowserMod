@@ -1,0 +1,469 @@
+package com.serverbrowser.command;
+
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.serverbrowser.config.ServerBrowserConfig;
+import com.serverbrowser.display.DisplayManager;
+import com.serverbrowser.display.ScreenInstance;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.server.players.NameAndId;
+
+import java.util.Map;
+
+/**
+ * プロフェッショナル仕様の洗練されたブラウザコマンド
+ * 多言語 i18n、設定ファイル (config)、権限管理に完全対応
+ */
+public class BrowserCommand {
+
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(
+            Commands.literal("browser")
+                .executes(ctx -> showHelp(ctx.getSource()))
+                .then(Commands.literal("help").executes(ctx -> showHelp(ctx.getSource())))
+                // 1. 設置: /browser create [横] [縦]
+                .then(Commands.literal("create")
+                    .executes(ctx -> createScreen(ctx.getSource(), 3, 2))
+                    .then(Commands.argument("width", IntegerArgumentType.integer(1, 100))
+                        .then(Commands.argument("height", IntegerArgumentType.integer(1, 100))
+                            .executes(ctx -> createScreen(
+                                ctx.getSource(),
+                                IntegerArgumentType.getInteger(ctx, "width"),
+                                IntegerArgumentType.getInteger(ctx, "height")
+                            ))
+                        )
+                    )
+                )
+                // 2. 撤去: /browser destroy (手持ちの棒に対応する画面と棒を消去・一般用)
+                .then(Commands.literal("destroy")
+                    .executes(ctx -> destroyScreen(ctx.getSource()))
+                )
+                // 3. 付近画面強制撤去: /browser destroy_near (OP専用)
+                .then(Commands.literal("destroy_near")
+                    .executes(ctx -> destroyNearScreen(ctx.getSource()))
+                )
+                // 4. ID指定強制撤去: /browser destroy_id <id> (OP専用)
+                .then(Commands.literal("destroy_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> destroyScreenById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
+                // 5. 全画面完全リセット: /browser reset (OP専用・clearはresetに統一)
+                .then(Commands.literal("reset")
+                    .executes(ctx -> resetScreens(ctx.getSource()))
+                )
+                // 6. ページ移動・検索: /browser open <URLまたは検索ワード>
+                .then(Commands.literal("open")
+                    .then(Commands.argument("url", StringArgumentType.greedyString())
+                        .executes(ctx -> openUrl(
+                            ctx.getSource(),
+                            StringArgumentType.getString(ctx, "url")
+                        ))
+                    )
+                )
+                // 7. Google検索: /browser google <検索ワード>
+                .then(Commands.literal("google")
+                    .then(Commands.argument("query", StringArgumentType.greedyString())
+                        .executes(ctx -> openUrl(
+                            ctx.getSource(),
+                            "https://www.google.co.jp/search?hl=ja&q=" + StringArgumentType.getString(ctx, "query")
+                        ))
+                    )
+                )
+                // 8. ページ再読み込み: /browser reload
+                .then(Commands.literal("reload")
+                    .executes(ctx -> doReload(ctx.getSource()))
+                )
+                // 9. 戻る / 進む: /browser back, /browser forward
+                .then(Commands.literal("back")
+                    .executes(ctx -> doBack(ctx.getSource()))
+                )
+                .then(Commands.literal("forward")
+                    .executes(ctx -> doForward(ctx.getSource()))
+                )
+                // 10. 文字入力: /browser type <テキスト>
+                .then(Commands.literal("type")
+                    .then(Commands.argument("text", StringArgumentType.greedyString())
+                        .executes(ctx -> inputType(
+                            ctx.getSource(),
+                            StringArgumentType.getString(ctx, "text")
+                        ))
+                    )
+                )
+                // 11. 決定: /browser enter
+                .then(Commands.literal("enter")
+                    .executes(ctx -> pressEnter(ctx.getSource()))
+                )
+                // 12. 削除: /browser backspace [回数], /browser bs [回数]
+                .then(Commands.literal("backspace")
+                    .executes(ctx -> pressBackspace(ctx.getSource(), 1))
+                    .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                        .executes(ctx -> pressBackspace(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))
+                    )
+                )
+                .then(Commands.literal("bs")
+                    .executes(ctx -> pressBackspace(ctx.getSource(), 1))
+                    .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                        .executes(ctx -> pressBackspace(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))
+                    )
+                )
+                // 12. クリック操作: /browser click, /browser rclick, /browser dclick (doubleclickはdclickに統一)
+                .then(Commands.literal("click")
+                    .executes(ctx -> doClick(ctx.getSource()))
+                )
+                .then(Commands.literal("rclick")
+                    .executes(ctx -> doRightClick(ctx.getSource()))
+                )
+                .then(Commands.literal("dclick")
+                    .executes(ctx -> doubleClick(ctx.getSource()))
+                )
+                // 13. ドラッグ操作 (つかむ / 離す): /browser drag
+                .then(Commands.literal("drag")
+                    .executes(ctx -> doToggleDrag(ctx.getSource()))
+                )
+                // 14. スクロール操作: /browser scroll [up|down|<delta>] [amount]
+                .then(Commands.literal("scroll")
+                    .executes(ctx -> doScroll(ctx.getSource(), 150))
+                    .then(Commands.literal("up")
+                        .executes(ctx -> doScroll(ctx.getSource(), -150))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                            .executes(ctx -> doScroll(ctx.getSource(), -IntegerArgumentType.getInteger(ctx, "amount")))
+                        )
+                    )
+                    .then(Commands.literal("down")
+                        .executes(ctx -> doScroll(ctx.getSource(), 150))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                            .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "amount")))
+                        )
+                    )
+                    .then(Commands.argument("delta", IntegerArgumentType.integer(-2000, 2000))
+                        .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "delta")))
+                    )
+                )
+                // 14. リモコン棒取得: /browser wand (最寄り), /browser wand_id <id> (OP専用)
+                .then(Commands.literal("wand")
+                    .executes(ctx -> getWand(ctx.getSource()))
+                )
+                .then(Commands.literal("wand_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> getWandById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
+                // 15. 一覧: /browser list
+                .then(Commands.literal("list")
+                    .executes(ctx -> listScreens(ctx.getSource()))
+                )
+        );
+    }
+
+    private static int showHelp(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.title"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.create"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.open"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.google"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.reload"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.history"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.type"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.backspace"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.enter"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.doubleclick"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.drag"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.scroll"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
+        source.sendSuccess(() -> Component.literal("§c【管理者用コマンド (要OP)】"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_near"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.reset"), false);
+        source.sendSuccess(() -> Component.literal("§7--------------------------------"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_title"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_right"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_left"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_shift_right"), false);
+        return 1;
+    }
+
+    private static boolean isOperator(CommandSourceStack source, ServerPlayer player) {
+        if (source.getServer().getPlayerList().isOp(new NameAndId(player.getGameProfile()))) {
+            return true;
+        }
+        if (source.permissions() instanceof LevelBasedPermissionSet levelSet) {
+            return levelSet.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS);
+        }
+        return false;
+    }
+
+    private static int createScreen(CommandSourceStack source, int width, int height) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+
+            // 権限チェック (OP必須設定の場合)
+            if (config.requireOpToCreate && !isOperator(source, player)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            // 最大サイズチェック
+            if (width > config.maxDisplayWidth || height > config.maxDisplayHeight) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.max_size", config.maxDisplayWidth, config.maxDisplayHeight));
+                return 0;
+            }
+
+            // 最大画面数チェック
+            if (DisplayManager.getInstance().getAllScreens().size() >= config.maxTotalScreens) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.max_screens", config.maxTotalScreens));
+                return 0;
+            }
+
+            ScreenInstance screen = DisplayManager.getInstance().createScreen(player, width, height);
+
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.created", screen.getId(), width, height), false);
+
+            String initialUrl = config.defaultUrl != null && !config.defaultUrl.isEmpty() ? config.defaultUrl : "https://www.google.com";
+            DisplayManager.getInstance().navigateScreen(screen, initialUrl, player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int destroyScreen(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            boolean success = DisplayManager.getInstance().destroyScreenWithWand(player);
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int destroyNearScreen(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            if (!isOperator(source, player)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            boolean success = DisplayManager.getInstance().removeNearestScreen(player, source.getServer());
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int destroyScreenById(CommandSourceStack source, int id) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            if (!isOperator(source, player)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            boolean success = DisplayManager.getInstance().destroyScreenById(id, player, source.getServer());
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int resetScreens(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            if (!isOperator(source, player)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            boolean success = DisplayManager.getInstance().resetAllScreens(player, source.getServer());
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int openUrl(CommandSourceStack source, String url) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().navigate(player, url, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int inputType(CommandSourceStack source, String text) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleTextInput(player, text, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int pressEnter(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleEnterKey(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int pressBackspace(CommandSourceStack source, int count) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleBackspace(player, count, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doRightClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleRightClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doScroll(CommandSourceStack source, int delta) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().scrollByCommand(player, delta, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doBack(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleBack(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doForward(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleForward(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doReload(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleReload(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doubleClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleDoubleClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int listScreens(CommandSourceStack source) {
+        Map<Integer, ScreenInstance> screens = DisplayManager.getInstance().getAllScreens();
+        if (screens.isEmpty()) {
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.no_screens"), false);
+            return 1;
+        }
+
+        source.sendSuccess(() -> Component.translatable("serverbrowser.msg.list_header", screens.size()), false);
+        for (ScreenInstance s : screens.values()) {
+            source.sendSuccess(() -> Component.translatable(
+                "serverbrowser.msg.list_item", s.getId(), s.getWidthTiles(), s.getHeightTiles(), s.getCurrentTarget()
+            ), false);
+        }
+        return 1;
+    }
+
+    private static int getWand(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            boolean success = DisplayManager.getInstance().reacquireWandNearest(player);
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int getWandById(CommandSourceStack source, int id) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            if (!isOperator(source, player)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            boolean success = DisplayManager.getInstance().reacquireWand(player, id);
+            return success ? 1 : 0;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doToggleDrag(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().toggleDrag(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+}
