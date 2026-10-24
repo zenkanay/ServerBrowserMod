@@ -1042,7 +1042,15 @@ public class DisplayManager {
             return;
         }
 
-        screen.scroll(delta);
+        int actualDelta = delta;
+        if (actualDelta == 0 || actualDelta == 1) {
+            actualDelta = screen.getAdaptiveScrollAmount();
+        } else if (actualDelta == -1) {
+            actualDelta = -screen.getAdaptiveScrollAmount();
+        }
+
+        final int scrollAmount = actualDelta;
+        screen.scroll(scrollAmount);
         int screenId = screen.getId();
 
         screen.updatePointerFromPlayer(player, server);
@@ -1053,7 +1061,7 @@ public class DisplayManager {
             BufferedImage image = null;
             try {
                 if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
-                    image = cdpEngine.performScrollForScreen(screenId, px, py, delta, screen.getPixelWidth(), screen.getPixelHeight());
+                    image = cdpEngine.performScrollForScreen(screenId, px, py, scrollAmount, screen.getPixelWidth(), screen.getPixelHeight());
                 } else {
                     image = builtinEngine.renderPage(screen.getCurrentTarget(), screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
                 }
@@ -1066,7 +1074,7 @@ public class DisplayManager {
                 screen.updateDisplayFromAsync(finalImage, server);
                 if (player != null) {
                     server.execute(() -> {
-                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] スクロールしました (" + (delta > 0 ? "下 " : "上 ") + Math.abs(delta) + "px)"));
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] スクロールしました (" + (scrollAmount > 0 ? "下 " : "上 ") + Math.abs(scrollAmount) + "px)"));
                     });
                 }
             }
@@ -1476,10 +1484,12 @@ public class DisplayManager {
             return true;
         }
 
+        // 画面サイズ（縦解像度）に比例した快適な適応スクロール量（画面高さの約20%）
+        int scrollDelta = screen.getAdaptiveScrollAmount();
         if (player.isShiftKeyDown()) {
-            scroll(player, 80, server); // Shift + 左クリックは「下スクロール ▼」
+            scroll(player, scrollDelta, server); // Shift + 左クリックは「下スクロール ▼」
         } else {
-            scroll(player, -80, server); // 左クリックは「上スクロール ▲」
+            scroll(player, -scrollDelta, server); // 左クリックは「上スクロール ▲」
         }
         return true;
     }
