@@ -67,6 +67,9 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser type <text>` | Type text into the active input element |
 | `/browser backspace [count]` | Send Backspace |
 | `/browser enter` | Send Enter key |
+| `/browser click` / `rclick` / `dclick` | Trigger left, right, or double click via command |
+| `/browser drag` | Toggle mouse drag mode (grab / release) |
+| `/browser scroll [up\|down\|amount]` | Scroll page via command |
 | `/browser wand` | Reacquire wand for nearest display within 10 blocks |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
 | `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 2.0) |

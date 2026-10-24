@@ -54,6 +54,7 @@
   "serverbrowser.help.open": "§e/browser open <URL/query> §7- Open web page or Google search",
   "serverbrowser.help.navigation": "§e/browser reload | back | forward | home §7- Reload / Back / Forward / Home",
   "serverbrowser.help.input": "§e/browser type <text> | enter | backspace §7- Type / Enter / Backspace",
+  "serverbrowser.help.mouse": "§e/browser click | rclick | dclick | drag | scroll §7- Mouse click & scroll via command",
   "serverbrowser.help.wand": "§e/browser wand §7- Recover wand for nearest screen",
   "serverbrowser.help.settings": "§e/browser fps | res | quality <val> §7- Screen settings (FPS / Res / Quality)",
   "serverbrowser.help.list": "§e/browser list | info §7- List screens / Show screen details",

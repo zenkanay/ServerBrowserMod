@@ -95,7 +95,40 @@ public class BrowserCommand {
                         .executes(ctx -> pressBackspace(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))
                     )
                 )
-                // 10. リモコン棒再取得: /browser wand
+                // 10. マウス操作: /browser click, /browser rclick, /browser dclick
+                .then(Commands.literal("click")
+                    .executes(ctx -> doClick(ctx.getSource()))
+                )
+                .then(Commands.literal("rclick")
+                    .executes(ctx -> doRightClick(ctx.getSource()))
+                )
+                .then(Commands.literal("dclick")
+                    .executes(ctx -> doubleClick(ctx.getSource()))
+                )
+                // 11. ドラッグ操作 (つかむ / 離す): /browser drag
+                .then(Commands.literal("drag")
+                    .executes(ctx -> doToggleDrag(ctx.getSource()))
+                )
+                // 12. スクロール操作: /browser scroll [up|down|<delta>] [amount]
+                .then(Commands.literal("scroll")
+                    .executes(ctx -> doScroll(ctx.getSource(), 0))
+                    .then(Commands.literal("up")
+                        .executes(ctx -> doScroll(ctx.getSource(), -1))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                            .executes(ctx -> doScroll(ctx.getSource(), -IntegerArgumentType.getInteger(ctx, "amount")))
+                        )
+                    )
+                    .then(Commands.literal("down")
+                        .executes(ctx -> doScroll(ctx.getSource(), 1))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                            .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "amount")))
+                        )
+                    )
+                    .then(Commands.argument("delta", IntegerArgumentType.integer(-2000, 2000))
+                        .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "delta")))
+                    )
+                )
+                // 13. リモコン棒再取得: /browser wand
                 .then(Commands.literal("wand")
                     .executes(ctx -> getWand(ctx.getSource()))
                 )
@@ -226,6 +259,7 @@ public class BrowserCommand {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.open"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.navigation"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.input"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.mouse"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.settings"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
@@ -402,6 +436,61 @@ public class BrowserCommand {
         try {
             ServerPlayer player = source.getPlayerOrException();
             DisplayManager.getInstance().handleBackspace(player, count, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doRightClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleRightClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doubleClick(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().handleDoubleClick(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doToggleDrag(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().toggleDrag(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int doScroll(CommandSourceStack source, int delta) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            DisplayManager.getInstance().scrollByCommand(player, delta, source.getServer());
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));

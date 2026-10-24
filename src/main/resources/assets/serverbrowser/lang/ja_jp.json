@@ -55,6 +55,7 @@
   "serverbrowser.help.open": "§e/browser open <URL/検索語> §7- ページを開く / Google検索",
   "serverbrowser.help.navigation": "§e/browser reload | back | forward | home §7- リロード / 戻る / 進む / ホーム",
   "serverbrowser.help.input": "§e/browser type <文> | enter | backspace §7- 入力 / 決定 / 削除",
+  "serverbrowser.help.mouse": "§e/browser click | rclick | dclick | drag | scroll §7- コマンドでマウス操作 / スクロール",
   "serverbrowser.help.wand": "§e/browser wand §7- 最寄りの画面のリモコン棒を再取得",
   "serverbrowser.help.settings": "§e/browser fps | res | quality <値> §7- 画面設定 (FPS / 解像度 / 画質)",
   "serverbrowser.help.list": "§e/browser list | info §7- 画面一覧 / 手持ち画面の詳細プロパティ",
