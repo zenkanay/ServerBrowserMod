@@ -124,24 +124,37 @@ public class ScreenInstance {
         if (facing.getAxis() != Direction.Axis.Y) {
             return Direction.DOWN;
         }
-        return Direction.NORTH;
+        return facing == Direction.DOWN ? Direction.NORTH : Direction.SOUTH;
     }
 
     /**
-     * 床（UP）または天井（DOWN）の場合、画面の上方向（downDir の反対）に合わせて額縁の回転角を取得
-     * 0: 0度(NORTH), 2: 90度(EAST), 4: 180度(SOUTH), 6: 270度(WEST)
+     * 床（UP）または天井（DOWN）の場合、rightDir と downDir に合わせて額縁の回転角(0..3)を取得
+     * ※ Minecraft の地図レンダラーは (rotation % 4) * 2 で 0, 90, 180, 270 度回転するため、
+     * 0: 0度, 1: 90度, 2: 180度, 3: 270度 が正確な値となる。
      */
     public int getFrameRotation() {
         if (facing.getAxis() != Direction.Axis.Y) {
             return 0; // 垂直な壁面は通常向き（0）
         }
-        Direction topDir = downDir.getOpposite();
-        return switch (topDir) {
-            case EAST -> 2;
-            case SOUTH -> 4;
-            case WEST -> 6;
-            default -> 0; // NORTH
-        };
+        if (facing == Direction.DOWN) {
+            // 天井（下向き）ディスプレイ
+            return switch (downDir) {
+                case NORTH -> 0;
+                case EAST  -> 3;
+                case SOUTH -> 2;
+                case WEST  -> 1;
+                default    -> 0;
+            };
+        } else {
+            // 床（上向き）ディスプレイ
+            return switch (downDir) {
+                case SOUTH -> 0;
+                case WEST  -> 1;
+                case NORTH -> 2;
+                case EAST  -> 3;
+                default    -> 0;
+            };
+        }
     }
 
     public int getId() { return id; }
@@ -212,9 +225,7 @@ public class ScreenInstance {
                 mapStack.set(DataComponents.MAP_ID, mapId);
 
                 frame.setItem(mapStack, false);
-                if (rotation != 0) {
-                    frame.setRotation(rotation);
-                }
+                frame.setRotation(rotation);
                 frame.setInvisible(true); // 額縁の木枠を透明化（ベゼルレス液晶化）
                 frame.setInvulnerable(true); // 破壊防止
 
@@ -313,14 +324,14 @@ public class ScreenInstance {
                     // ワールドに額縁がまだ存在しない場合のみ新規生成
                     chosen = new ItemFrame(level, framePos, facing);
                     chosen.setItem(mapStack, false);
-                    if (rotation != 0) chosen.setRotation(rotation);
+                    chosen.setRotation(rotation);
                     chosen.setInvisible(true);
                     chosen.setInvulnerable(true);
                     setFrameFixedAndUndroppable(chosen);
                     level.addFreshEntity(chosen);
                 } else {
                     chosen.setItem(mapStack, false);
-                    if (rotation != 0) chosen.setRotation(rotation);
+                    chosen.setRotation(rotation);
                     chosen.setInvisible(true);
                     chosen.setInvulnerable(true);
                     setFrameFixedAndUndroppable(chosen);

@@ -292,11 +292,11 @@ public class DisplayManager {
             // 額縁は天井ブロックの下面に下向き（DOWN）に設置
             screenFacing = Direction.DOWN;
             rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
-            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側が画面の下端
+            downDir = forwardDir;                 // プレイヤーから見て前方（奥側）が画面の下端（頭上・手前側が画面の上端）
 
-            // プレイヤーの頭上ブロック(above(3))の目の前から奥に向かって広がる
-            // x=0, y=0（奥・左端）の基盤ブロック座標
-            originWallPos = playerPos.above(3).relative(forwardDir, heightTiles);
+            // プレイヤーの頭上ブロック(above(3))の直上から奥に向かって広がる
+            // x=0, y=0（手前・左端）の基盤ブロック座標
+            originWallPos = playerPos.above(3);
         } else {
             // 【通常の壁面ディスプレイ】水平を向いている場合
             screenFacing = forwardDir.getOpposite();
