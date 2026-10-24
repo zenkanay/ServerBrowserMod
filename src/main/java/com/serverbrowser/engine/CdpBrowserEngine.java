@@ -1070,53 +1070,49 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public BufferedImage performScroll(int cursorX, int cursorY, int deltaY, int width, int height) throws Exception {
-            final int targetX = (cursorX >= 0 && cursorX < width) ? cursorX : width / 2;
-            final int targetY = (cursorY >= 0 && cursorY < height) ? cursorY : height / 2;
+            final int sx = (int) Math.round(((cursorX >= 0 && cursorX < width) ? cursorX : width / 2) * scale);
+            final int sy = (int) Math.round(((cursorY >= 0 && cursorY < height) ? cursorY : height / 2) * scale);
 
-            // 1. ネイティブ CDP mouseWheel イベント送信（YouTube Shorts、モーダル等の内部スクロールコンテナを直接駆動）
-            try {
-                Map<String, Object> wheelParams = new HashMap<>();
-                wheelParams.put("type", "mouseWheel");
-                wheelParams.put("x", targetX);
-                wheelParams.put("y", targetY);
-                wheelParams.put("deltaX", 0);
-                wheelParams.put("deltaY", deltaY);
-                wheelParams.put("pointerType", "mouse");
-                sendCommand("Input.dispatchMouseEvent", wheelParams).get(1, TimeUnit.SECONDS);
-            } catch (Exception ignored) {}
-
-            // 2. 万能ディープ・コンテナ・スクローラー (Universal Deep Container Scroller)
-            // カーソル下の最も近いスクロール可能要素 (overflow-y: auto/scroll, scrollHeight > clientHeight) を自動特定してスクロール！
+            // 1. カーソル下の要素が内部スクロールコンテナ（YouTube Shorts、モーダル、チャット欄等）かどうかを判定してスクロール
             String js = "(function(x, y, delta) { " +
-                "var target = document.elementFromPoint(x, y); " +
-                "var el = target; " +
-                "var scrolled = false; " +
+                "var el = document.elementFromPoint(x, y); " +
                 "while (el && el !== document.documentElement && el !== document.body) { " +
                 "    var style = window.getComputedStyle(el); " +
                 "    var overflowY = style.overflowY || style.overflow; " +
-                "    var canScroll = (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && (el.scrollHeight > el.clientHeight); " +
-                "    if (canScroll) { " +
+                "    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && (el.scrollHeight > el.clientHeight)) { " +
                 "        var prev = el.scrollTop; " +
                 "        el.scrollTop += delta; " +
-                "        if (el.scrollTop !== prev) { " +
-                "            scrolled = true; " +
-                "            break; " +
-                "        } " +
+                "        if (el.scrollTop !== prev) return true; " +
                 "    } " +
                 "    el = el.parentElement; " +
                 "} " +
-                "if (!scrolled) { " +
-                "    window.scrollBy(0, delta); " +
-                "    var root = document.scrollingElement || document.documentElement || document.body; " +
-                "    if (root) root.scrollTop += delta; " +
-                "} " +
-                "})(" + targetX + ", " + targetY + ", " + deltaY + ");";
+                "return false; " +
+                "})(" + sx + ", " + sy + ", " + deltaY + ");";
 
+            boolean containerScrolled = false;
             try {
-                sendCommand("Runtime.evaluate", Map.of("expression", js)).get(1, TimeUnit.SECONDS);
+                String res = sendCommand("Runtime.evaluate", Map.of("expression", js, "returnByValue", true)).get(1, TimeUnit.SECONDS);
+                if (res != null && res.contains("\"value\":true")) {
+                    containerScrolled = true;
+                }
             } catch (Exception ignored) {}
 
-            Thread.sleep(120);
+            // 2. 内部コンテナがスクロールされなかった場合のみ、ネイティブ CDP mouseWheel を 1 回だけ送信！
+            // （これだけで Chrome がページ全体を重複なく正確に 1 回分スクロールする！）
+            if (!containerScrolled) {
+                try {
+                    Map<String, Object> wheelParams = new HashMap<>();
+                    wheelParams.put("type", "mouseWheel");
+                    wheelParams.put("x", sx);
+                    wheelParams.put("y", sy);
+                    wheelParams.put("deltaX", 0);
+                    wheelParams.put("deltaY", deltaY);
+                    wheelParams.put("pointerType", "mouse");
+                    sendCommand("Input.dispatchMouseEvent", wheelParams).get(1, TimeUnit.SECONDS);
+                } catch (Exception ignored) {}
+            }
+
+            Thread.sleep(80);
             return captureScreenshot(width, height);
         }
 

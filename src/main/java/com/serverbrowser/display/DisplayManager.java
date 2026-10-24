@@ -904,8 +904,8 @@ public class DisplayManager {
     public void scroll(ServerPlayer player, int delta, MinecraftServer server) {
         long now = System.currentTimeMillis();
         Long lastTime = lastScrollTimestamps.get(player.getUUID());
-        // 120ms 未満の連打詰まりを防止（快適・スムーズなスクロール）
-        if (lastTime != null && (now - lastTime) < 120) {
+        // 250ms 未満の連打・クリック長押しによる多重暴発を防止（快適・スムーズなスクロール）
+        if (lastTime != null && (now - lastTime) < 250) {
             return;
         }
         lastScrollTimestamps.put(player.getUUID(), now);

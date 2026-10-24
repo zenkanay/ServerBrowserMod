@@ -188,11 +188,14 @@ public class ScreenInstance {
     public int getRenderHeight() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelHeight() * scale))); }
 
     /**
-     * 画面サイズ（縦解像度）に最適化された適応型スクロール量（画面高さの約 20%）
-     * 1x1 の小型画面でも、8x6 の巨大スクリーンでも、常に快適なスクロール感を提供！
+     * 画面サイズ（解像度スケール res を完全考慮）に最適化された適応型スクロール量
+     * ブラウザ内部の描画解像度（getRenderHeight()）の約 12% を基準とし、
+     * res（scale）が 0.1 でも 2.0 でも常に画面の約 1/8 ページ分スムーズに進む快適なスクロール量を算出！
      */
     public int getAdaptiveScrollAmount() {
-        return Math.max(32, (int) Math.round(getPixelHeight() * 0.20));
+        int renderH = getRenderHeight();
+        int amount = (int) Math.round(renderH * 0.12);
+        return Math.max(16, Math.min(120, amount));
     }
 
     public void buildScreen() {
