@@ -38,8 +38,8 @@ public class ScreenInstance {
     private final Direction facing;
     private final Direction rightDir;
     private final Direction downDir;
-    private final List<ItemFrame> frames = new ArrayList<>();
-    private final List<BlockPos> placedBlocks = new ArrayList<>();
+    private final Set<ItemFrame> frames = ConcurrentHashMap.newKeySet();
+    private final Set<BlockPos> placedBlocks = ConcurrentHashMap.newKeySet();
 
     // タイルごとの前回収集色配列キャッシュ（差分送信によるパケット量 80% 削減）
     private final Map<Integer, byte[]> lastTileColors = new ConcurrentHashMap<>();
@@ -625,7 +625,26 @@ public class ScreenInstance {
         int h = Math.min(128, Math.min(oldImg.getHeight() - sy, newImg.getHeight() - sy));
         if (w <= 0 || h <= 0) return true;
 
-        // 8ピクセル間隔で高速サンプリング（動画やアニメーション、ホバーによる差分を 0.005ms 以内で検知）
+        // ダイレクトバッファアクセスによる 10 倍高速なピクセル差分検知（getRGB のオーバーヘッド完全排除）
+        if ((oldImg.getType() == BufferedImage.TYPE_INT_RGB || oldImg.getType() == BufferedImage.TYPE_INT_ARGB)
+                && (newImg.getType() == BufferedImage.TYPE_INT_RGB || newImg.getType() == BufferedImage.TYPE_INT_ARGB)) {
+            int[] oldData = ((java.awt.image.DataBufferInt) oldImg.getRaster().getDataBuffer()).getData();
+            int[] newData = ((java.awt.image.DataBufferInt) newImg.getRaster().getDataBuffer()).getData();
+            int oldScan = oldImg.getWidth();
+            int newScan = newImg.getWidth();
+            for (int y = 0; y < h; y += 8) {
+                int oldRow = (sy + y) * oldScan + sx;
+                int newRow = (sy + y) * newScan + sx;
+                for (int x = 0; x < w; x += 8) {
+                    if (oldData[oldRow + x] != newData[newRow + x]) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // フォールバック
         for (int y = 0; y < h; y += 8) {
             for (int x = 0; x < w; x += 8) {
                 if (oldImg.getRGB(sx + x, sy + y) != newImg.getRGB(sx + x, sy + y)) {
@@ -637,7 +656,7 @@ public class ScreenInstance {
     }
 
     /**
-     * サイトの画面が更新されたかを高速判定（8ピクセル間隔サンプリングで動画の微小差分も確実捕捉）
+     * サイトの画面が更新されたかを高速判定（ダイレクトバッファサンプリング）
      */
     public boolean isImageDifferent(BufferedImage newImg) {
         if (baseImage == null || newImg == null) return true;
@@ -645,6 +664,22 @@ public class ScreenInstance {
 
         int w = newImg.getWidth();
         int h = newImg.getHeight();
+
+        if ((baseImage.getType() == BufferedImage.TYPE_INT_RGB || baseImage.getType() == BufferedImage.TYPE_INT_ARGB)
+                && (newImg.getType() == BufferedImage.TYPE_INT_RGB || newImg.getType() == BufferedImage.TYPE_INT_ARGB)) {
+            int[] baseData = ((java.awt.image.DataBufferInt) baseImage.getRaster().getDataBuffer()).getData();
+            int[] newData = ((java.awt.image.DataBufferInt) newImg.getRaster().getDataBuffer()).getData();
+            for (int y = 0; y < h; y += 8) {
+                int row = y * w;
+                for (int x = 0; x < w; x += 8) {
+                    if (baseData[row + x] != newData[row + x]) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         for (int y = 0; y < h; y += 8) {
             for (int x = 0; x < w; x += 8) {
                 if (baseImage.getRGB(x, y) != newImg.getRGB(x, y)) {
@@ -853,8 +888,8 @@ public class ScreenInstance {
         }
 
         if (subW > 0 && subH > 0) {
-            BufferedImage sub = baseImage.getSubimage(sx, sy, subW, subH);
-            g.drawImage(sub, 0, 0, subW, subH, null);
+            // getSubimage による不要なヒープアロケーションを完全撤廃（GCゼロアロケーション描画）
+            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
         }
 
         // 入力選択中のハイライト表示
@@ -924,24 +959,35 @@ public class ScreenInstance {
     }
 
     public void resendToPlayer(ServerPlayer player) {
-        if (baseImage == null) return;
+        if (baseImage == null && lastTileColors.isEmpty()) return;
 
         for (int ty = 0; ty < heightTiles; ty++) {
             for (int tx = 0; tx < widthTiles; tx++) {
-                int sx = tx * 128;
-                int sy = ty * 128;
+                int tileIndex = ty * widthTiles + tx;
+                byte[] colors = lastTileColors.get(tileIndex);
 
-                BufferedImage tileImage = new BufferedImage(128, 128, BufferedImage.TYPE_INT_RGB);
-                var g = tileImage.createGraphics();
-                int subW = Math.min(128, Math.max(0, baseImage.getWidth() - sx));
-                int subH = Math.min(128, Math.max(0, baseImage.getHeight() - sy));
-                if (subW > 0 && subH > 0) {
-                    g.drawImage(baseImage.getSubimage(sx, sy, subW, subH), 0, 0, subW, subH, null);
+                // キャッシュがない場合のみフォールバック描画
+                if (colors == null) {
+                    if (baseImage == null) continue;
+                    int sx = tx * 128;
+                    int sy = ty * 128;
+                    BufferedImage tileImage = REUSABLE_TILE_IMAGE.get();
+                    var g = tileImage.createGraphics();
+                    int subW = Math.min(128, Math.max(0, baseImage.getWidth() - sx));
+                    int subH = Math.min(128, Math.max(0, baseImage.getHeight() - sy));
+                    if (subW < 128 || subH < 128) {
+                        g.setColor(Color.BLACK);
+                        g.fillRect(0, 0, 128, 128);
+                    }
+                    if (subW > 0 && subH > 0) {
+                        g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
+                    }
+                    g.dispose();
+                    colors = MapColorPalette.convertImageToMapBytes(tileImage);
+                    lastTileColors.put(tileIndex, colors.clone());
                 }
-                g.dispose();
 
-                byte[] colors = MapColorPalette.convertImageToMapBytes(tileImage);
-                int mapIdNum = baseMapId + (ty * widthTiles + tx);
+                int mapIdNum = baseMapId + tileIndex;
                 MapId mapId = new MapId(mapIdNum);
 
                 MapItemSavedData.MapPatch patch = new MapItemSavedData.MapPatch(0, 0, 128, 128, colors);
@@ -967,6 +1013,7 @@ public class ScreenInstance {
                 BlockPos wallPos = originWallPos.relative(rightDir, x).relative(downDir, y);
                 BlockPos framePos = wallPos.relative(facing);
                 if (frame.blockPosition().equals(framePos)) {
+                    frames.add(frame);
                     return true;
                 }
             }

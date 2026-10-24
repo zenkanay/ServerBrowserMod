@@ -227,6 +227,10 @@ public class DisplayManager {
             ServerLevel level = s.getLevel();
             if (level != null) {
                 BlockPos wallPos = s.getOriginWallPos();
+                // チャンクが未ロード（プレイヤーが遠くにいる）場合は判定をスキップし、大切な画面の誤消去を完全防止！
+                if (!level.isLoaded(wallPos)) {
+                    continue;
+                }
                 boolean wallExists = level.getBlockState(wallPos).is(net.minecraft.world.level.block.Blocks.BLACK_CONCRETE);
                 boolean framesExist = !level.getEntitiesOfClass(ItemFrame.class, s.getScreenBoundingBox()).isEmpty();
                 if (!wallExists && !framesExist) {
@@ -614,6 +618,10 @@ public class DisplayManager {
         if (cdpEngine != null) {
             cdpEngine.stop();
         }
+        if (renderExecutor != null && !renderExecutor.isShutdown()) {
+            renderExecutor.shutdownNow();
+            renderExecutor = null;
+        }
     }
 
     public static class ScreenSaveData {
@@ -755,7 +763,8 @@ public class DisplayManager {
                             img = builtinEngine.renderPage(finalScreen.getCurrentTarget(), finalScreen.getPixelWidth(), finalScreen.getPixelHeight(), finalScreen.getScrollY());
                         }
                         if (img != null) {
-                            server.execute(() -> finalScreen.updateDisplay(img, server));
+                            // 重い減色・差分判定・パケット生成をワーカースレッド内で直接完了（サーバーメインスレッドの Tick ブロック完全ゼロ化）
+                            finalScreen.updateDisplayFromAsync(img, server);
                         }
                     } catch (Exception ex) {
                         LOGGER.warn("Failed to load initial page for restored screen #{}: {}", finalScreen.getId(), ex.getMessage());

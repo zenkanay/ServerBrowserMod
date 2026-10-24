@@ -31,6 +31,11 @@ import java.util.regex.Pattern;
 public class CdpBrowserEngine implements IBrowserEngine {
     private static final Logger LOGGER = LoggerFactory.getLogger(CdpBrowserEngine.class);
 
+    static {
+        // ディスクキャッシュを使わずピュアメモリ内で高速に JPEG デコードを実行（ディスク I/O 削減 & 高速化）
+        ImageIO.setUseCache(false);
+    }
+
     private final String executablePath;
     private final String engineName;
 
@@ -584,6 +589,11 @@ public class CdpBrowserEngine implements IBrowserEngine {
             } catch (Exception ignored) {}
             browserControlWs = null;
         }
+        for (CompletableFuture<String> future : browserPendingResponses.values()) {
+            future.cancel(true);
+        }
+        browserPendingResponses.clear();
+
         for (TabSession session : screenTabs.values()) {
             session.close();
         }
@@ -1188,6 +1198,10 @@ public class CdpBrowserEngine implements IBrowserEngine {
         public void close() {
             connected = false;
             stopScreencast();
+            for (CompletableFuture<String> future : pendingResponses.values()) {
+                future.cancel(true);
+            }
+            pendingResponses.clear();
             if (webSocket != null) {
                 try {
                     webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Close tab").join();
