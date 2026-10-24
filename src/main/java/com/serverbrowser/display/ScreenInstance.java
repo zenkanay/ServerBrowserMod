@@ -46,7 +46,6 @@ public class ScreenInstance {
     private BufferedImage doubleBufferA = null;
     private BufferedImage doubleBufferB = null;
     private boolean useBufferA = true;
-    private int packetScanStartTile = 0;
 
     // タイルレンダリング用再利用バッファ
     private static final ThreadLocal<BufferedImage> REUSABLE_TILE_IMAGE =
@@ -453,26 +452,18 @@ public class ScreenInstance {
 
         // ワーカースレッド側で全タイルの差分判定とパケット生成を完了させる
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
-        int totalTiles = widthTiles * heightTiles;
-        // 巨大スクリーン（タイルの合計 > 64）の場合、1フレームあたりの最大パケット数（バジェット）を設定してクライアントのフリーズを防止
-        int maxPacketsPerFrame = (totalTiles > 64) ? Math.min(128, Math.max(32, totalTiles / 3)) : totalTiles;
+        for (int ty = 0; ty < heightTiles; ty++) {
+            for (int tx = 0; tx < widthTiles; tx++) {
+                int tileIndex = ty * widthTiles + tx;
+                boolean hasPointer = (!isPointerIdle && tx == lastPointerTileX && ty == lastPointerTileY);
+                boolean unsent = !lastTileColors.containsKey(tileIndex);
+                if (!unsent && oldImage != null && !hasPointer && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
+                    continue;
+                }
 
-        for (int i = 0; i < totalTiles; i++) {
-            int tileIndex = (packetScanStartTile + i) % totalTiles;
-            int tx = tileIndex % widthTiles;
-            int ty = tileIndex / widthTiles;
-
-            boolean hasPointer = (!isPointerIdle && tx == lastPointerTileX && ty == lastPointerTileY);
-            if (oldImage != null && !hasPointer && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
-                continue;
-            }
-
-            ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, hasPointer);
-            if (packet != null) {
-                packetsToSend.add(packet);
-                if (packetsToSend.size() >= maxPacketsPerFrame) {
-                    packetScanStartTile = (tileIndex + 1) % totalTiles;
-                    break;
+                ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, hasPointer);
+                if (packet != null) {
+                    packetsToSend.add(packet);
                 }
             }
         }
@@ -724,6 +715,11 @@ public class ScreenInstance {
 
         int subW = Math.min(128, Math.max(0, baseImage.getWidth() - sx));
         int subH = Math.min(128, Math.max(0, baseImage.getHeight() - sy));
+
+        if (subW < 128 || subH < 128) {
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, 128, 128);
+        }
 
         if (subW > 0 && subH > 0) {
             BufferedImage sub = baseImage.getSubimage(sx, sy, subW, subH);
