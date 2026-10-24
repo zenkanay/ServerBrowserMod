@@ -981,7 +981,17 @@ public class CdpBrowserEngine implements IBrowserEngine {
             }
 
             Thread.sleep(250);
-            fetchCurrentLocationUrl(); // 最新のページURLを取得・追跡
+            String previousUrl = this.currentUrl;
+            String newUrl = fetchCurrentLocationUrl(); // 最新のページURLを取得・追跡
+            if (newUrl != null && previousUrl != null && !newUrl.equalsIgnoreCase(previousUrl)) {
+                // ページが別URLへ遷移した場合、Screencastを再起動してストリームを新ドキュメントに確実同期！
+                if (screencastActive) {
+                    try {
+                        stopScreencast();
+                        startScreencast(this.currentWidth, this.currentHeight, this.targetQuality, this.targetFps);
+                    } catch (Exception ignored) {}
+                }
+            }
             return captureScreenshot(width, height);
         }
 
@@ -1037,6 +1047,18 @@ public class CdpBrowserEngine implements IBrowserEngine {
             sendCommand("Input.dispatchKeyEvent", keyUp).get(1, TimeUnit.SECONDS);
 
             Thread.sleep(600);
+            if (keyCode == 13) {
+                String previousUrl = this.currentUrl;
+                String newUrl = fetchCurrentLocationUrl();
+                if (newUrl != null && previousUrl != null && !newUrl.equalsIgnoreCase(previousUrl)) {
+                    if (screencastActive) {
+                        try {
+                            stopScreencast();
+                            startScreencast(this.currentWidth, this.currentHeight, this.targetQuality, this.targetFps);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
             return captureScreenshot(width, height);
         }
 

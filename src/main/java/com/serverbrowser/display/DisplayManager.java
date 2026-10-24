@@ -38,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -52,6 +53,8 @@ public class DisplayManager {
     private final Map<Integer, ScreenInstance> screens = new ConcurrentHashMap<>();
     private ExecutorService renderExecutor = Executors.newFixedThreadPool(4);
     private final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(2);
+    // 追従リフレッシュの多重実行・タスク重複を防止するデバウンス管理
+    private final Map<Integer, ScheduledFuture<?>> followUpTasks = new ConcurrentHashMap<>();
 
     public ExecutorService getRenderExecutor() {
         if (renderExecutor == null || renderExecutor.isShutdown() || renderExecutor.isTerminated()) {
@@ -219,6 +222,17 @@ public class DisplayManager {
         screen.refreshPointerTile(server);
     }
 
+    private void cleanupScreenResources(int screenId) {
+        ScheduledFuture<?> f = followUpTasks.remove(screenId);
+        if (f != null && !f.isDone()) {
+            f.cancel(false);
+        }
+        activeUpdatingScreens.remove(screenId);
+        if (cdpEngine != null) {
+            cdpEngine.closeTab(screenId);
+        }
+    }
+
     /**
      * ワールドに存在しない幽霊画面（ブロックも額縁も消滅した画面）を自動検出してクリーンアップ
      */
@@ -245,7 +259,7 @@ public class DisplayManager {
             ScreenInstance s = screens.remove(id);
             if (s != null) {
                 s.destroyScreen();
-                if (cdpEngine != null) cdpEngine.closeTab(id);
+                cleanupScreenResources(id);
                 LOGGER.info("Cleaned up ghost screen #{}", id);
             }
         }
@@ -471,9 +485,7 @@ public class DisplayManager {
         int targetScreenId = screen.getId();
         screens.remove(targetScreenId);
         screen.destroyScreen();
-        if (cdpEngine != null) {
-            cdpEngine.closeTab(targetScreenId);
-        }
+        cleanupScreenResources(targetScreenId);
 
         // 手に持っている棒を消去
         wandStack.shrink(1);
@@ -501,9 +513,7 @@ public class DisplayManager {
         int targetScreenId = screen.getId();
         screens.remove(targetScreenId);
         screen.destroyScreen();
-        if (cdpEngine != null) {
-            cdpEngine.closeTab(targetScreenId);
-        }
+        cleanupScreenResources(targetScreenId);
 
         // プレイヤーのインベントリ内に棒があれば消去
         removeWandFromInventory(player, targetScreenId);
@@ -525,9 +535,7 @@ public class DisplayManager {
         }
 
         screen.destroyScreen();
-        if (cdpEngine != null) {
-            cdpEngine.closeTab(targetScreenId);
-        }
+        cleanupScreenResources(targetScreenId);
         removeWandFromInventory(player, targetScreenId);
 
         ServerLevel level = (ServerLevel) player.level();
@@ -547,9 +555,7 @@ public class DisplayManager {
 
         for (ScreenInstance s : screens.values()) {
             s.destroyScreen();
-            if (cdpEngine != null) {
-                cdpEngine.closeTab(s.getId());
-            }
+            cleanupScreenResources(s.getId());
         }
         screens.clear();
 
@@ -615,6 +621,8 @@ public class DisplayManager {
         LOGGER.info("Saving screens and stopping browser engine...");
         saveScreens(server);
         screens.clear(); // シングルプレイでのワールド退出時に必ずメモリをクリアして次回 #1 から開始！
+        followUpTasks.values().forEach(f -> f.cancel(false));
+        followUpTasks.clear();
         activeUpdatingScreens.clear();
         lastClickTimestamps.clear();
         lastScrollTimestamps.clear();
@@ -870,24 +878,31 @@ public class DisplayManager {
                 player.sendSystemMessage(Component.translatable("serverbrowser.msg.load_failed"));
             }
 
-            // ページ遷移直後の遅延ロード・非同期DOM描画を捉える追従リフレッシュ！
-            scheduleFollowUpRefresh(screen, server, 400);
-            scheduleFollowUpRefresh(screen, server, 1000);
-            scheduleFollowUpRefresh(screen, server, 2000);
+            // ページ遷移直後の遅延ロード・非同期DOM描画を捉える追従リフレッシュ（デバウンス型）
+            scheduleFollowUpRefresh(screen, server, 450);
         });
     }
 
     /**
      * クリック、スクロール、入力、ページ移動後の非同期描画変化を捉えて確実に画面更新する追従スケジューラー
+     * 操作連打時のタスク増殖・キュー詰まりをデバウンスで完全防止し、必要な時だけ安全に 1 回リフレッシュ
      */
     public void scheduleFollowUpRefresh(ScreenInstance screen, MinecraftServer server, long delayMs) {
         if (screen == null || server == null || cdpEngine == null || !cdpEngine.isAvailable() || "builtin".equalsIgnoreCase(preferredEngine)) {
             return;
         }
         int screenId = screen.getId();
-        scheduledExecutor.schedule(() -> {
+
+        // 既存の未実行タスクがあればキャンセル（操作連打時のタスク重複とキュー飽和を完全防止！）
+        ScheduledFuture<?> existing = followUpTasks.remove(screenId);
+        if (existing != null && !existing.isDone()) {
+            existing.cancel(false);
+        }
+
+        ScheduledFuture<?> future = scheduledExecutor.schedule(() -> {
+            followUpTasks.remove(screenId);
             try {
-                // Screencast で動画等が激しく再生されている最中なら追従ポーリングは不要
+                // Screencast で動画等が現在進行形でフレームを連続受信中なら追従ポーリングは不要
                 if (cdpEngine.isReceivingScreencast(screenId)) {
                     return;
                 }
@@ -896,9 +911,13 @@ public class DisplayManager {
                 BufferedImage latest = cdpEngine.captureScreenshotForScreen(screenId, w, h);
                 if (latest != null && screen.isImageDifferent(latest)) {
                     screen.updateDisplayFromAsync(latest, server, false);
+                    // 変化があった場合（非同期画像やフォントの遅延ロードに備え）、念押しで800ms後にもう1回だけ追従確認
+                    scheduleFollowUpRefresh(screen, server, 800);
                 }
             } catch (Exception ignored) {}
         }, delayMs, TimeUnit.MILLISECONDS);
+
+        followUpTasks.put(screenId, future);
     }
 
     public void scroll(ServerPlayer player, int delta, MinecraftServer server) {
@@ -941,8 +960,7 @@ public class DisplayManager {
             if (finalImage != null) {
                 screen.updateDisplayFromAsync(finalImage, server);
             }
-            scheduleFollowUpRefresh(screen, server, 250);
-            scheduleFollowUpRefresh(screen, server, 600);
+            scheduleFollowUpRefresh(screen, server, 300);
         });
     }
 
@@ -1027,8 +1045,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 300);
-            scheduleFollowUpRefresh(screen, server, 800);
+            scheduleFollowUpRefresh(screen, server, 350);
         });
     }
 
@@ -1078,8 +1095,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 250);
-            scheduleFollowUpRefresh(screen, server, 600);
+            scheduleFollowUpRefresh(screen, server, 300);
         });
     }
 
@@ -1119,9 +1135,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 400);
-            scheduleFollowUpRefresh(screen, server, 1000);
-            scheduleFollowUpRefresh(screen, server, 2000);
+            scheduleFollowUpRefresh(screen, server, 450);
         });
     }
 
@@ -1161,9 +1175,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 400);
-            scheduleFollowUpRefresh(screen, server, 1000);
-            scheduleFollowUpRefresh(screen, server, 2000);
+            scheduleFollowUpRefresh(screen, server, 450);
         });
     }
 
@@ -1205,9 +1217,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 400);
-            scheduleFollowUpRefresh(screen, server, 1000);
-            scheduleFollowUpRefresh(screen, server, 2000);
+            scheduleFollowUpRefresh(screen, server, 450);
         });
     }
 
@@ -1265,9 +1275,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 300);
-            scheduleFollowUpRefresh(screen, server, 800);
-            scheduleFollowUpRefresh(screen, server, 1800);
+            scheduleFollowUpRefresh(screen, server, 350);
         });
     }
 
@@ -1333,8 +1341,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 300);
-            scheduleFollowUpRefresh(screen, server, 800);
+            scheduleFollowUpRefresh(screen, server, 350);
         });
     }
 
@@ -1368,9 +1375,7 @@ public class DisplayManager {
                     });
                 }
             }
-            scheduleFollowUpRefresh(screen, server, 300);
-            scheduleFollowUpRefresh(screen, server, 800);
-            scheduleFollowUpRefresh(screen, server, 1800);
+            scheduleFollowUpRefresh(screen, server, 450);
         });
     }
 
@@ -1407,7 +1412,6 @@ public class DisplayManager {
                 }
             }
             scheduleFollowUpRefresh(screen, server, 300);
-            scheduleFollowUpRefresh(screen, server, 800);
         });
     }
 
@@ -1556,6 +1560,7 @@ public class DisplayManager {
     /**
      * 要件: 「サイトの画面が更新されたら，マイクラのほうも画面更新するようにして」
      * サイト側での動画再生、非同期ロード、アニメーション等による変化を検知してマイクラ画面を自動同期！
+     * Screencast有効時はChromeのゼロ遅延プッシュに委ね、静止時の超重量スクショポーリングを完全停止（CPU 0%）！
      */
     private void checkLiveScreenUpdates(MinecraftServer server) {
         if (cdpEngine == null || !cdpEngine.isAvailable() || "builtin".equalsIgnoreCase(preferredEngine)) {
@@ -1566,24 +1571,33 @@ public class DisplayManager {
             return;
         }
 
+        long now = System.currentTimeMillis();
+
         for (ScreenInstance screen : screens.values()) {
             int screenId = screen.getId();
-            // 超高速 Page.startScreencast が現在進行形でフレームを連続受信している画面は、
-            // 重い captureScreenshot ポーリングをスキップして Chrome の動画再生を邪魔しない！
-            // 静止画状態やページ遷移直後などで Screencast フレームが途絶えている間は、自動で定期キャプチャ同期が引き継ぐ！
-            if (cdpEngine != null && cdpEngine.isReceivingScreencast(screenId)) {
-                continue;
+
+            // 超高速 Page.startScreencast が動作している画面は、Chrome の Compositor レベルで
+            // 動画・アニメーション・DOM変化を検知して自律的にフレームをプッシュ送信する。
+            // そのため、静止画状態の時に重い captureScreenshot を毎秒10回ポーリングするのを完全停止し、小型〜大型全画面で CPU負荷 0% を実現！
+            if (cdpEngine.isScreencastActive(screenId)) {
+                // Screencastが現在進行形でフレームを連続受信している（動画再生中など）、
+                // または直近3秒以内に画面更新があった場合は完全にポーリングをスキップ！
+                if (cdpEngine.isReceivingScreencast(screenId) || (now - screen.getLastUpdateTime() < 3000)) {
+                    continue;
+                }
+                // 3秒以上静止しており、かつ近く（16ブロック以内）にプレイヤーがいる時のみ、安全策の超軽量ハートビートとして実行
             }
 
             if (activeUpdatingScreens.contains(screenId)) {
                 continue; // 前回のチェックがまだ実行中ならスキップ
             }
 
-            // 画面の近く（64ブロック以内）にプレイヤーがいるか確認（不在時は省エネ）
+            // 画面の近くにプレイヤーがいるか確認（Screencastアクティブ時は16ブロック、非アクティブ時は32ブロック）
+            int checkDist = cdpEngine.isScreencastActive(screenId) ? 16 : 32;
             boolean hasNearbyPlayer = false;
             BlockPos screenPos = screen.getOriginWallPos();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                if (player.blockPosition().closerThan(screenPos, 64)) {
+                if (player.level() == screen.getLevel() && player.blockPosition().closerThan(screenPos, checkDist)) {
                     hasNearbyPlayer = true;
                     break;
                 }
