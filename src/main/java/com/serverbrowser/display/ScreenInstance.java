@@ -139,12 +139,12 @@ public class ScreenInstance {
             return 0; // 垂直な壁面は通常向き（0）
         }
         if (facing == Direction.DOWN) {
-            // 天井（下向き）ディスプレイ: flipX（左右反転相殺）との合成
+            // 天井（下向き）ディスプレイ: downDir = forwardDir（奥側が画面下端）
             return switch (downDir) {
-                case NORTH -> 0; // forwardDir = SOUTH (奥がSOUTH, 手前がNORTH)
-                case WEST  -> 1; // forwardDir = EAST
-                case SOUTH -> 2; // forwardDir = NORTH (奥がNORTH, 手前がSOUTH)
-                case EAST  -> 3; // forwardDir = WEST
+                case NORTH -> 0; // forwardDir = NORTH
+                case EAST  -> 3; // forwardDir = EAST
+                case SOUTH -> 2; // forwardDir = SOUTH
+                case WEST  -> 1; // forwardDir = WEST
                 default    -> 0;
             };
         } else {
@@ -893,8 +893,6 @@ public class ScreenInstance {
         int subW = Math.min(128, Math.max(0, baseImage.getWidth() - sx));
         int subH = Math.min(128, Math.max(0, baseImage.getHeight() - sy));
 
-        boolean isCeiling = (facing == Direction.DOWN);
-
         if (subW < 128 || subH < 128) {
             g.setColor(Color.BLACK);
             g.fillRect(0, 0, 128, 128);
@@ -902,12 +900,7 @@ public class ScreenInstance {
 
         if (subW > 0 && subH > 0) {
             // getSubimage による不要なヒープアロケーションを完全撤廃（GCゼロアロケーション描画）
-            if (isCeiling) {
-                // 天井ディスプレイの場合、バニラクライアントのItemFrameRendererによる鏡像反転を相殺するため左右反転描画
-                g.drawImage(baseImage, 0, 0, subW, subH, sx + subW, sy, sx, sy + subH, null);
-            } else {
-                g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
-            }
+            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
         }
 
         // 入力選択中のハイライト表示
@@ -927,8 +920,7 @@ public class ScreenInstance {
             int localPx = pointerX - sx;
             int localPy = pointerY - sy;
 
-            int drawPx = isCeiling ? (127 - localPx) : localPx;
-            drawMouseCursor(g, drawPx, localPy, isCeiling);
+            drawMouseCursor(g, localPx, localPy);
         }
 
         g.dispose();
@@ -956,20 +948,10 @@ public class ScreenInstance {
         );
     }
 
-    private void drawMouseCursor(Graphics2D g, int x, int y, boolean flipX) {
+    private void drawMouseCursor(Graphics2D g, int x, int y) {
         // 洗練された白いマウスポインタ矢印（黒枠付き）
-        // flipX が true の場合、左向きの矢印を描画（クライアント側で左右反転されて正立右向きになる）
-        int[] xPoints;
-        int[] xInner;
-        if (flipX) {
-            xPoints = new int[]{ x, x, x - 4, x - 6, x - 9, x - 7, x - 11, x - 7, x };
-            xInner = new int[]{ x - 1, x - 1, x - 4, x - 6, x - 8, x - 6, x - 9, x - 6, x - 1 };
-        } else {
-            xPoints = new int[]{ x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
-            xInner = new int[]{ x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
-        }
+        int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
         int[] yPoints = { y, y + 13, y + 10, y + 15, y + 14, y + 9, y + 9, y + 6, y };
-        int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
 
         // 外側黒枠
         g.setColor(Color.BLACK);
@@ -977,18 +959,18 @@ public class ScreenInstance {
         g.drawPolygon(xPoints, yPoints, 9);
 
         // 内側（通常は白、ドラッグ中はゴールド/黄色）
+        int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
+        int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
         g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
         g.fillPolygon(xInner, yInner, 9);
 
         // 先端のハイライト点（通常は赤、ドラッグ中は鮮やかなオレンジ）
         g.setColor(isDragging ? Color.ORANGE : Color.RED);
-        g.fillRect(flipX ? (x - 1) : x, y, 2, 2);
+        g.fillRect(x, y, 2, 2);
     }
 
     public void resendToPlayer(ServerPlayer player) {
         if (baseImage == null && lastTileColors.isEmpty()) return;
-
-        boolean isCeiling = (facing == Direction.DOWN);
 
         for (int ty = 0; ty < heightTiles; ty++) {
             for (int tx = 0; tx < widthTiles; tx++) {
@@ -1009,11 +991,7 @@ public class ScreenInstance {
                         g.fillRect(0, 0, 128, 128);
                     }
                     if (subW > 0 && subH > 0) {
-                        if (isCeiling) {
-                            g.drawImage(baseImage, 0, 0, subW, subH, sx + subW, sy, sx, sy + subH, null);
-                        } else {
-                            g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
-                        }
+                        g.drawImage(baseImage, 0, 0, subW, subH, sx, sy, sx + subW, sy + subH, null);
                     }
                     g.dispose();
                     colors = MapColorPalette.convertImageToMapBytes(tileImage);
