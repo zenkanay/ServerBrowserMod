@@ -121,12 +121,11 @@ Configuration is located at `config/serverbrowser.json`:
 
 ## Branch Strategy
 
-This repository organizes development branches using `<mc-version>-<loader>` naming conventions:
+This repository organizes branches by Minecraft version and mod loader (`<loader><version>`):
 
-- **`main`**: Primary active branch (tracking the latest stable release line, Fabric 1.21.x).
-- **`1.21-fabric`**: Dedicated branch for Minecraft 1.21.x on Fabric.
-- **`1.21-neoforge`**: (Future) Port for Minecraft 1.21.x on NeoForge.
-- **`1.20.x-<loader>`**: (Future) Backports for earlier Minecraft versions.
+- **`fabric1.21.11`**: Active default branch for Minecraft 1.21.11 on Fabric.
+- **`neoforge1.21.11`**: (Future) Planned port for Minecraft 1.21.11 on NeoForge.
+- **`fabric1.20.x` / `forge1.20.x`**: (Future) Planned ports for earlier Minecraft versions.
 
 ---
 
