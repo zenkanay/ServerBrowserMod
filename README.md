@@ -60,6 +60,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser create [width] [height]` | Spawn a display and receive its Remote Wand |
 | `/browser destroy` | Destroy the display and wand held in hand |
 | `/browser open <url or query>` | Navigate to a URL or search query |
+| `/browser home` | Navigate to default home page |
 | `/browser google <query>` | Shortcut for Google Search |
 | `/browser reload` | Reload the current page |
 | `/browser back` / `/browser forward` | Navigate history back / forward |
@@ -118,16 +119,6 @@ Configuration is located at `config/serverbrowser.json`:
   "defaultScale": 1.0
 }
 ```
-
----
-
-## Branch Strategy
-
-This repository organizes branches by Minecraft version and mod loader (`<loader><version>`):
-
-- **`fabric1.21.11`**: Active default branch for Minecraft 1.21.11 on Fabric.
-- **`neoforge1.21.11`**: (Future) Planned port for Minecraft 1.21.11 on NeoForge.
-- **`fabric1.20.x` / `forge1.20.x`**: (Future) Planned ports for earlier Minecraft versions.
 
 ---
 
