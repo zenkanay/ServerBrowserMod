@@ -75,6 +75,7 @@ public class ScreenInstance {
 
     // ドラッグ状態
     private volatile boolean isDragging = false;
+    private volatile boolean forceRefreshNext = false;
 
     // ディスプレイ個別の描画プロパティ（解像度スケール、FPS、JPEG品質）
     private int fps = 14;
@@ -485,7 +486,11 @@ public class ScreenInstance {
     }
 
     public void updateDisplay(BufferedImage fullImage, MinecraftServer server) {
-        updateDisplayFromAsync(fullImage, server);
+        updateDisplayFromAsync(fullImage, server, false);
+    }
+
+    public void updateDisplay(BufferedImage fullImage, MinecraftServer server, boolean forceRefresh) {
+        updateDisplayFromAsync(fullImage, server, forceRefresh);
     }
 
     /**
@@ -496,6 +501,10 @@ public class ScreenInstance {
      * 未送信タイルが残った場合は自動で次Tick/40ms後にフラッシュを継続し、静止画でも全画面を 100% 確実に表示する。
      */
     public void updateDisplayFromAsync(BufferedImage fullImage, MinecraftServer server) {
+        updateDisplayFromAsync(fullImage, server, false);
+    }
+
+    public void updateDisplayFromAsync(BufferedImage fullImage, MinecraftServer server, boolean forceRefresh) {
         if (fullImage == null || server == null) return;
 
         // 超大型スクリーンにも対応したプレイヤー近接判定（不在時は省エネ）
@@ -509,6 +518,10 @@ public class ScreenInstance {
         }
         if (!hasNearbyPlayer) return;
 
+        if (forceRefresh) {
+            this.forceRefreshNext = true;
+        }
+
         // フルスクリーン動画等で送られてきた解像度が画面と異なる場合、画面全体（全タイル）にぴったり高品質フィット
         BufferedImage normalizedImage = normalizeImage(fullImage);
         BufferedImage oldImage = this.baseImage;
@@ -520,7 +533,7 @@ public class ScreenInstance {
         for (int i = 0; i < totalTiles; i++) {
             int tx = i % widthTiles;
             int ty = i / widthTiles;
-            if (oldImage == null || oldImage == normalizedImage || !lastTileColors.containsKey(i) || isTileDirty(oldImage, normalizedImage, tx, ty)) {
+            if (forceRefresh || oldImage == null || oldImage == normalizedImage || !lastTileColors.containsKey(i) || isTileDirty(oldImage, normalizedImage, tx, ty)) {
                 dirtyTileIndices.add(i);
             }
         }
@@ -591,6 +604,8 @@ public class ScreenInstance {
                 }
             });
         }
+
+        this.forceRefreshNext = false;
     }
 
     /**
@@ -604,16 +619,17 @@ public class ScreenInstance {
         if (w <= 0 || h <= 0) return true;
 
         // ダイレクトバッファアクセスによる 10 倍高速なピクセル差分検知（getRGB のオーバーヘッド完全排除）
+        // サンプリングステップを 2px 飛び（+= 2）にして、小さなフォントやアイコン・枠線の変化も 100% 漏らさず検知
         if ((oldImg.getType() == BufferedImage.TYPE_INT_RGB || oldImg.getType() == BufferedImage.TYPE_INT_ARGB)
                 && (newImg.getType() == BufferedImage.TYPE_INT_RGB || newImg.getType() == BufferedImage.TYPE_INT_ARGB)) {
             int[] oldData = ((java.awt.image.DataBufferInt) oldImg.getRaster().getDataBuffer()).getData();
             int[] newData = ((java.awt.image.DataBufferInt) newImg.getRaster().getDataBuffer()).getData();
             int oldScan = oldImg.getWidth();
             int newScan = newImg.getWidth();
-            for (int y = 0; y < h; y += 8) {
+            for (int y = 0; y < h; y += 2) {
                 int oldRow = (sy + y) * oldScan + sx;
                 int newRow = (sy + y) * newScan + sx;
-                for (int x = 0; x < w; x += 8) {
+                for (int x = 0; x < w; x += 2) {
                     if (oldData[oldRow + x] != newData[newRow + x]) {
                         return true;
                     }
@@ -623,8 +639,8 @@ public class ScreenInstance {
         }
 
         // フォールバック
-        for (int y = 0; y < h; y += 8) {
-            for (int x = 0; x < w; x += 8) {
+        for (int y = 0; y < h; y += 2) {
+            for (int x = 0; x < w; x += 2) {
                 if (oldImg.getRGB(sx + x, sy + y) != newImg.getRGB(sx + x, sy + y)) {
                     return true;
                 }
@@ -647,9 +663,9 @@ public class ScreenInstance {
                 && (newImg.getType() == BufferedImage.TYPE_INT_RGB || newImg.getType() == BufferedImage.TYPE_INT_ARGB)) {
             int[] baseData = ((java.awt.image.DataBufferInt) baseImage.getRaster().getDataBuffer()).getData();
             int[] newData = ((java.awt.image.DataBufferInt) newImg.getRaster().getDataBuffer()).getData();
-            for (int y = 0; y < h; y += 8) {
+            for (int y = 0; y < h; y += 2) {
                 int row = y * w;
-                for (int x = 0; x < w; x += 8) {
+                for (int x = 0; x < w; x += 2) {
                     if (baseData[row + x] != newData[row + x]) {
                         return true;
                     }
@@ -658,8 +674,8 @@ public class ScreenInstance {
             return false;
         }
 
-        for (int y = 0; y < h; y += 8) {
-            for (int x = 0; x < w; x += 8) {
+        for (int y = 0; y < h; y += 2) {
+            for (int x = 0; x < w; x += 2) {
                 if (baseImage.getRGB(x, y) != newImg.getRGB(x, y)) {
                     return true;
                 }
@@ -907,7 +923,7 @@ public class ScreenInstance {
         // クライアントに実際に送信された色配列を正確に追跡
         // ポインターあり・なしに関わらず、送信した内容と同一ならスキップし、変化があれば確実に送信する
         byte[] prevColors = lastTileColors.get(tileIndex);
-        if (prevColors != null && Arrays.equals(prevColors, colors)) {
+        if (!forceRefreshNext && prevColors != null && Arrays.equals(prevColors, colors)) {
             return null;
         }
         lastTileColors.put(tileIndex, colors.clone());

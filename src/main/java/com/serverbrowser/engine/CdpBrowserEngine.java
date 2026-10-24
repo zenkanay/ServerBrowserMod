@@ -64,6 +64,11 @@ public class CdpBrowserEngine implements IBrowserEngine {
         return session != null && session.isScreencastActive();
     }
 
+    public boolean isReceivingScreencast(int screenId) {
+        TabSession session = screenTabs.get(screenId);
+        return session != null && session.isReceivingScreencast();
+    }
+
     public CdpBrowserEngine(String executablePath, String name) {
         this.executablePath = executablePath;
         this.engineName = name;
@@ -662,7 +667,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
         private final StringBuilder messageBuffer = new StringBuilder();
         private boolean connected = false;
         private volatile boolean screencastActive = false;
-        private long lastScreencastFrameTime = 0;
+        private volatile long lastScreencastFrameTime = 0;
         private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
 
         // 画面個別設定（FPS、JPEG品質、解像度スケール）
@@ -803,10 +808,15 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
         public BufferedImage navigateAndCapture(String target, int width, int height) throws Exception {
             String formatted = formatUrl(target);
-            if (!formatted.equalsIgnoreCase(currentUrl)) {
-                this.currentUrl = formatted;
-                sendCommand("Page.navigate", Map.of("url", formatted)).get(5, TimeUnit.SECONDS);
-                Thread.sleep(800);
+            this.currentUrl = formatted;
+            sendCommand("Page.navigate", Map.of("url", formatted)).get(5, TimeUnit.SECONDS);
+            Thread.sleep(600);
+            // ページ遷移で Screencast がリセットされた場合に備え、確実に再開・ストリーム維持
+            if (screencastActive) {
+                try {
+                    stopScreencast();
+                    startScreencast(this.currentWidth, this.currentHeight, this.targetQuality, this.targetFps);
+                } catch (Exception ignored) {}
             }
             return captureScreenshot(width, height);
         }
@@ -1189,6 +1199,10 @@ public class CdpBrowserEngine implements IBrowserEngine {
             return screencastActive;
         }
 
+        public boolean isReceivingScreencast() {
+            return screencastActive && (System.currentTimeMillis() - lastScreencastFrameTime < 600);
+        }
+
         public void startScreencast(int width, int height) {
             startScreencast(width, height, this.targetQuality, this.targetFps);
         }
@@ -1253,6 +1267,8 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
         private void handleScreencastFrame(String msg) {
             try {
+                this.lastScreencastFrameTime = System.currentTimeMillis();
+
                 // 1. sessionId 抽出
                 int sessionIdx = msg.indexOf("\"sessionId\":");
                 if (sessionIdx == -1) return;
@@ -1283,33 +1299,37 @@ public class CdpBrowserEngine implements IBrowserEngine {
                     return;
                 }
 
-                final String base64 = msg.substring(quoteStart + 1, quoteEnd);
+                try {
+                    final String base64 = msg.substring(quoteStart + 1, quoteEnd);
 
-                // 3. フレームレート安定化制御（目標 FPS に応じた正確なフレーム間隔ディレイ）
-                long targetInterval = Math.max(16, 1000 / Math.max(1, targetFps));
-                long now = System.currentTimeMillis();
-                long elapsed = now - lastScreencastFrameTime;
-                long delay = Math.max(0, targetInterval - elapsed);
+                    // 3. フレームレート安定化制御（目標 FPS に応じた正確なフレーム間隔ディレイ）
+                    long targetInterval = Math.max(16, 1000 / Math.max(1, targetFps));
+                    long now = System.currentTimeMillis();
+                    long elapsed = now - lastScreencastFrameTime;
+                    long delay = Math.max(0, targetInterval - elapsed);
 
-                screencastExecutor.submit(() -> {
-                    try {
-                        byte[] bytes = Base64.getDecoder().decode(base64);
-                        try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
-                            BufferedImage img = ImageIO.read(bais);
-                            if (img != null && globalFrameConsumer != null) {
-                                globalFrameConsumer.accept(screenId, img);
+                    screencastExecutor.submit(() -> {
+                        try {
+                            byte[] bytes = Base64.getDecoder().decode(base64);
+                            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+                                BufferedImage img = ImageIO.read(bais);
+                                if (img != null && globalFrameConsumer != null) {
+                                    globalFrameConsumer.accept(screenId, img);
+                                }
                             }
+                        } catch (Exception ignored) {
+                        } finally {
+                            if (delay > 0) {
+                                try { Thread.sleep(delay); } catch (InterruptedException ignored) {}
+                            }
+                            ackScreencastFrame(sessionId);
+                            isProcessingFrame.set(false);
                         }
-                    } catch (Exception ignored) {
-                    } finally {
-                        if (delay > 0) {
-                            try { Thread.sleep(delay); } catch (InterruptedException ignored) {}
-                        }
-                        ackScreencastFrame(sessionId);
-                        lastScreencastFrameTime = System.currentTimeMillis();
-                        isProcessingFrame.set(false);
-                    }
-                });
+                    });
+                } catch (Throwable t) {
+                    isProcessingFrame.set(false);
+                    ackScreencastFrame(sessionId);
+                }
             } catch (Exception e) {
                 LOGGER.warn("Error processing screencastFrame for screen #{}: {}", screenId, e.getMessage());
             }

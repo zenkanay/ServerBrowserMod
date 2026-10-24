@@ -37,6 +37,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,6 +51,7 @@ public class DisplayManager {
     // 全ての設置されたディスプレイ（ID -> ScreenInstance）
     private final Map<Integer, ScreenInstance> screens = new ConcurrentHashMap<>();
     private ExecutorService renderExecutor = Executors.newFixedThreadPool(4);
+    private final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(2);
 
     public ExecutorService getRenderExecutor() {
         if (renderExecutor == null || renderExecutor.isShutdown() || renderExecutor.isTerminated()) {
@@ -622,6 +625,9 @@ public class DisplayManager {
             renderExecutor.shutdownNow();
             renderExecutor = null;
         }
+        if (scheduledExecutor != null && !scheduledExecutor.isShutdown()) {
+            scheduledExecutor.shutdownNow();
+        }
     }
 
     public static class ScreenSaveData {
@@ -856,14 +862,43 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                screen.updateDisplayFromAsync(finalImage, server);
+                screen.updateDisplayFromAsync(finalImage, server, true);
                 if (player != null) {
                     player.sendSystemMessage(Component.translatable("serverbrowser.msg.loaded", screen.getId()));
                 }
             } else if (player != null) {
                 player.sendSystemMessage(Component.translatable("serverbrowser.msg.load_failed"));
             }
+
+            // ページ遷移直後の遅延ロード・非同期DOM描画を捉える追従リフレッシュ！
+            scheduleFollowUpRefresh(screen, server, 400);
+            scheduleFollowUpRefresh(screen, server, 1000);
+            scheduleFollowUpRefresh(screen, server, 2000);
         });
+    }
+
+    /**
+     * クリック、スクロール、入力、ページ移動後の非同期描画変化を捉えて確実に画面更新する追従スケジューラー
+     */
+    public void scheduleFollowUpRefresh(ScreenInstance screen, MinecraftServer server, long delayMs) {
+        if (screen == null || server == null || cdpEngine == null || !cdpEngine.isAvailable() || "builtin".equalsIgnoreCase(preferredEngine)) {
+            return;
+        }
+        int screenId = screen.getId();
+        scheduledExecutor.schedule(() -> {
+            try {
+                // Screencast で動画等が激しく再生されている最中なら追従ポーリングは不要
+                if (cdpEngine.isReceivingScreencast(screenId)) {
+                    return;
+                }
+                int w = screen.getPixelWidth();
+                int h = screen.getPixelHeight();
+                BufferedImage latest = cdpEngine.captureScreenshotForScreen(screenId, w, h);
+                if (latest != null && screen.isImageDifferent(latest)) {
+                    screen.updateDisplayFromAsync(latest, server, false);
+                }
+            } catch (Exception ignored) {}
+        }, delayMs, TimeUnit.MILLISECONDS);
     }
 
     public void scroll(ServerPlayer player, int delta, MinecraftServer server) {
@@ -904,8 +939,10 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> screen.updateDisplay(finalImage, server));
+                screen.updateDisplayFromAsync(finalImage, server);
             }
+            scheduleFollowUpRefresh(screen, server, 250);
+            scheduleFollowUpRefresh(screen, server, 600);
         });
     }
 
@@ -983,11 +1020,15 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.literal("§a[ServerBrowser] 右クリックを実行しました。"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] 右クリックを実行しました。"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 300);
+            scheduleFollowUpRefresh(screen, server, 800);
         });
     }
 
@@ -1022,11 +1063,15 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.literal("§a[ServerBrowser] スクロールしました (" + (delta > 0 ? "下 " : "上 ") + Math.abs(delta) + "px)"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] スクロールしました (" + (delta > 0 ? "下 " : "上 ") + Math.abs(delta) + "px)"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 250);
+            scheduleFollowUpRefresh(screen, server, 600);
         });
     }
 
@@ -1059,11 +1104,16 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.literal("§a[ServerBrowser] 前のページに戻りました！ (" + screen.getCurrentTarget() + ")"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server, true);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] 前のページに戻りました！ (" + screen.getCurrentTarget() + ")"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 400);
+            scheduleFollowUpRefresh(screen, server, 1000);
+            scheduleFollowUpRefresh(screen, server, 2000);
         });
     }
 
@@ -1096,11 +1146,16 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.literal("§a[ServerBrowser] 次のページに進みました！ (" + screen.getCurrentTarget() + ")"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server, true);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] 次のページに進みました！ (" + screen.getCurrentTarget() + ")"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 400);
+            scheduleFollowUpRefresh(screen, server, 1000);
+            scheduleFollowUpRefresh(screen, server, 2000);
         });
     }
 
@@ -1135,11 +1190,16 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.literal("§a[ServerBrowser] ページの再読み込みが完了しました！"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server, true);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.literal("§a[ServerBrowser] ページの再読み込みが完了しました！"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 400);
+            scheduleFollowUpRefresh(screen, server, 1000);
+            scheduleFollowUpRefresh(screen, server, 2000);
         });
     }
 
@@ -1186,15 +1246,20 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    if (isDouble) {
-                        player.sendSystemMessage(Component.translatable("serverbrowser.msg.double_clicked"));
-                    } else {
-                        player.sendSystemMessage(Component.translatable("serverbrowser.msg.clicked"));
-                    }
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        if (isDouble) {
+                            player.sendSystemMessage(Component.translatable("serverbrowser.msg.double_clicked"));
+                        } else {
+                            player.sendSystemMessage(Component.translatable("serverbrowser.msg.clicked"));
+                        }
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 300);
+            scheduleFollowUpRefresh(screen, server, 800);
+            scheduleFollowUpRefresh(screen, server, 1800);
         });
     }
 
@@ -1253,11 +1318,15 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.translatable("serverbrowser.msg.typed"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.translatable("serverbrowser.msg.typed"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 300);
+            scheduleFollowUpRefresh(screen, server, 800);
         });
     }
 
@@ -1284,11 +1353,16 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.translatable("serverbrowser.msg.enter_sent"));
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.translatable("serverbrowser.msg.enter_sent"));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 300);
+            scheduleFollowUpRefresh(screen, server, 800);
+            scheduleFollowUpRefresh(screen, server, 1800);
         });
     }
 
@@ -1317,11 +1391,15 @@ public class DisplayManager {
 
             final BufferedImage finalImage = image;
             if (finalImage != null) {
-                server.execute(() -> {
-                    screen.updateDisplay(finalImage, server);
-                    player.sendSystemMessage(Component.translatable("serverbrowser.msg.backspace_sent", actualCount));
-                });
+                screen.updateDisplayFromAsync(finalImage, server);
+                if (player != null) {
+                    server.execute(() -> {
+                        player.sendSystemMessage(Component.translatable("serverbrowser.msg.backspace_sent", actualCount));
+                    });
+                }
             }
+            scheduleFollowUpRefresh(screen, server, 300);
+            scheduleFollowUpRefresh(screen, server, 800);
         });
     }
 
@@ -1480,9 +1558,10 @@ public class DisplayManager {
 
         for (ScreenInstance screen : screens.values()) {
             int screenId = screen.getId();
-            // 超高速 Page.startScreencast が動作している画面は、Chrome からのゼロ遅延プッシュで自律更新されるため、
-            // 重い captureScreenshot ポーリングは完全スキップして Chrome の動画再生を邪魔しない！
-            if (cdpEngine != null && cdpEngine.isScreencastActive(screenId)) {
+            // 超高速 Page.startScreencast が現在進行形でフレームを連続受信している画面は、
+            // 重い captureScreenshot ポーリングをスキップして Chrome の動画再生を邪魔しない！
+            // 静止画状態やページ遷移直後などで Screencast フレームが途絶えている間は、自動で定期キャプチャ同期が引き継ぐ！
+            if (cdpEngine != null && cdpEngine.isReceivingScreencast(screenId)) {
                 continue;
             }
 
