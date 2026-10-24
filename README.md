@@ -1,80 +1,101 @@
-# ServerBrowser 🌐
+# ServerBrowser
 
-> **Pure Server-Side In-Game Web Browser for Minecraft (Fabric 1.21.11)**
-> Zero client mods required. Vanilla Minecraft clients can connect and browse the real internet!
+A server-side web browser mod for Minecraft (Fabric 1.21.11).
+
+ServerBrowser runs a headless Chromium instance on the server and streams web page renders directly to in-game item frame displays using vanilla map packets. Clients do not need to install any mod to view or interact with the displays.
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-brightgreen.svg)](https://minecraft.net/)
 [![Fabric](https://img.shields.io/badge/Loader-Fabric-blue.svg)](https://fabricmc.net/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## English
+## Features
 
-### ✨ Key Features
-- **100% Server-Side**: Players do **NOT** need to install any mod! Vanilla clients can join and see the screens.
-- **Real Chromium CDP Engine**: Runs headless Chrome/Edge in the background with Chrome DevTools Protocol. Renders real CSS layouts, images, and HTML.
-- **Ultra-Smooth 14 FPS Autonomous Streaming**: GPU-accelerated CDP screencasting with worker-thread differential tile rendering. Zero server tick blocking.
-- **PC-Like Mouse Hover & Smart Auto-Hide**: Sight raycast triggers native CSS `:hover` states. Stationary sight for 1.5s smoothly auto-hides YouTube player controllers and cursor for an immersive full-screen cinematic experience.
-- **Mouse Click & Drag**: Grab and slide YouTube seek bars, volume controls, Google Maps panning, and text selection just like on a real PC!
-- **Gigantic Displays (Up to 100x100)**: Create theater screens (32x18, 48x27), stadium megavisions (64x36), or up to 100x100 blocks with dedicated map ID ranges and auto-distance packet scaling.
-- **Multiple Independent Screens**: Place as many displays as you want in your world! Each display has its own independent browser tab and isolated incognito session.
-- **Dedicated Remote Wands (1:1 Binding)**: Automatic wand given per display. Mouse pointer only appears and interacts when holding the corresponding wand.
-- **SMP Safe & Grief Protected**: Remote wand locks item frames from unauthorized punches and rotations. Dangerous commands require server operator (OP) permission.
+- **Server-Side Only**: Vanilla Minecraft clients can connect and see full web displays without installing client-side mods.
+- **Headless Chromium Engine**: Utilizes Chrome DevTools Protocol (CDP) to render modern web pages, CSS, JavaScript, and video players.
+- **Efficient Streaming**: Streams screencast frames asynchronously, updating only changed map tiles with bilinear scaling and palette quantization.
+- **Interactive Mouse Controls**: Raycasting-based cursor interaction with click, double click, drag, and scroll support.
+- **Configurable Displays**: Adjust per-display resolution scale, FPS, and JPEG compression quality on the fly, within server operator limits.
+- **Display Protection**: Remote wands are bound 1:1 to displays; item frames are protected from unauthorized rotation or destruction.
 
 ---
 
-### 🎮 Controls (Remote Wand)
-Hold the dedicated **Remote Wand** in hand to interact:
-- **Right Click**: Mouse Click (Focus input boxes, click links/buttons)
-- **Quick Double Right Click**: Double Click (Native double-click trigger)
-- **Shift + Right Click**: **Mouse Drag Toggle** (Grab seek bars, sliders, maps; cursor turns gold, click again to drop!)
-- **Left Click**: Scroll Up ▲
-- **Shift + Left Click**: Scroll Down ▼
-- **/browser drag**: Toggle mouse drag mode via command
+## Requirements
+
+- **Minecraft**: 1.21.11 (Fabric)
+- **Java**: 21 or higher
+- **Server Host**: Google Chrome, Chromium, or Microsoft Edge installed on the host operating system.
 
 ---
 
-### 💻 Commands
+## Installation
 
-#### Standard Player Commands (No OP required)
+1. Place `serverbrowser-<version>.jar` and `fabric-api` into the server `mods/` directory.
+2. Ensure Chrome or Edge is installed on the host machine (ServerBrowser automatically detects standard browser paths).
+3. Start the server. Configuration files are generated in `config/serverbrowser.json`.
+
+---
+
+## Controls
+
+Interactions require holding the dedicated **Remote Wand** bound to the target display:
+
+| Action | Control |
+| :--- | :--- |
+| **Click / Focus** | Right Click |
+| **Double Click** | Double Right Click |
+| **Drag (Toggle)** | Shift + Right Click |
+| **Scroll Up** | Left Click (swing in air) |
+| **Scroll Down** | Shift + Left Click (swing in air) |
+
+---
+
+## Commands
+
+### Player Commands
+
 | Command | Description |
 | :--- | :--- |
-| `/browser create [width] [height]` | Spawn display (up to 100x100) and receive dedicated Remote Wand |
-| `/browser destroy` | Destroy the display and wand currently held in hand |
-| `/browser open <url or query>` | Open website or search query |
+| `/browser create [width] [height]` | Spawn a display and receive its Remote Wand |
+| `/browser destroy` | Destroy the display and wand held in hand |
+| `/browser open <url or query>` | Navigate to a URL or search query |
 | `/browser google <query>` | Shortcut for Google Search |
-| `/browser reload` | Reload the current web page |
-| `/browser back` / `forward` | Navigate back / forward in browser history |
-| `/browser type <text>` | Type text into active input field |
-| `/browser backspace [count]` | Send Backspace to delete characters (alias: `/browser bs`) |
-| `/browser enter` | Press Enter key to submit search or form |
-| `/browser drag` | Toggle mouse click & drag mode |
-| `/browser click` / `rclick` / `dclick` | Mouse Click / Right Click / Double Click at cursor |
-| `/browser scroll [up\|down\|amount]` | Scroll page via command (e.g. `/browser scroll up 200`) |
-| `/browser wand` | Reacquire Remote Wand for the closest display within 10 blocks |
-| `/browser list` | View list of all active displays, resolutions, FPS, and limits |
+| `/browser reload` | Reload the current page |
+| `/browser back` / `/browser forward` | Navigate history back / forward |
+| `/browser type <text>` | Type text into the active input element |
+| `/browser backspace [count]` | Send Backspace (alias: `/browser bs`) |
+| `/browser enter` | Send Enter key |
+| `/browser drag` | Toggle mouse drag mode |
+| `/browser click` / `rclick` / `dclick` | Trigger mouse click via command |
+| `/browser scroll [up\|down\|amount]` | Scroll page via command |
+| `/browser wand` | Reacquire wand for nearest display within 10 blocks |
+| `/browser list` | List active displays and current properties |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
-| `/browser quality <10-100>` | Set JPEG compression quality for held display (alias: `/browser qual`) |
-| `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 1.5, 2.0) (alias: `/browser resolution`) |
+| `/browser quality <quality>` | Set JPEG quality for held display (10 to 100, alias: `/browser qual`) |
+| `/browser res <scale>` | Set resolution scale for held display (alias: `/browser resolution`) |
 
-#### Admin / Operator Commands (OP Required)
+### Operator Commands (OP Required)
+
 | Command | Description |
 | :--- | :--- |
-| `/browser destroy_near` | Force remove nearest display without holding wand |
-| `/browser destroy_id <id>` | Force remove specific display by ID |
-| `/browser wand_id <id>` | Obtain Remote Wand for any specific display by ID |
-| `/browser fps_id <id> <fps>` | Force set frame rate for specific display by ID |
-| `/browser quality_id <id> <quality>` | Force set JPEG quality for specific display by ID |
-| `/browser res_id <id> <scale>` | Force set resolution scale for specific display by ID |
-| `/browser max_fps <fps>` | Configure server-wide maximum FPS limit (1 to 60) |
-| `/browser max_quality <quality>` | Configure server-wide maximum JPEG quality limit (10 to 100) |
-| `/browser max_res <scale>` | Configure server-wide maximum resolution scale limit (0.5 to 4.0) |
-| `/browser reset` | Delete all displays and reset screen ID counter to #1 |
+| `/browser destroy_near` | Remove nearest display without holding wand |
+| `/browser destroy_id <id>` | Remove specific display by ID |
+| `/browser wand_id <id>` | Obtain Remote Wand for specific display by ID |
+| `/browser fps_id <id> <fps>` | Set frame rate for display by ID |
+| `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
+| `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
+| `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 60) |
+| `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (10 to 100) |
+| `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.5 to 4.0) |
+| `/browser reset` | Delete all displays and reset screen ID counter |
 
 ---
 
-### ⚙️ Server Configuration (`config/serverbrowser.json`)
+## Configuration
+
+Configuration is located at `config/serverbrowser.json`:
+
 ```json
 {
   "customChromePath": "",
@@ -98,67 +119,17 @@ Hold the dedicated **Remote Wand** in hand to interact:
 
 ---
 
-## 日本語 (Japanese)
+## Branch Strategy
 
-### ✨ 主な特徴
-- **完全サーバーサイド動作**: クライアント側の mod 導入は一切不要！バニラクライアントで参加してそのまま巨大ディスプレイのブラウザを楽しめます。
-- **超高速 13〜14 FPS 自律ストリーミング**: Chrome の GPU Screencast を直接受信し、ワーカースレッドでタイル差分処理。サーバー Tick を 0.01ms もブロックしません。
-- **PC ライクなマウスホバー＆スマート自動非表示**: 視線移動でリアルな `:hover` スタイルが発動。画面をじっと見つめると 1.5 秒でカーソルや YouTube のコントローラー・暗い影が自動でフェードアウトし、動画本体だけが最高画質でクリア再生されます。
-- **マウス クリック＆ドラッグ対応**: `Shift + 右クリック` でつかみ、視線で YouTube のシークバーや音量、Google マップの移動、テキスト選択などを本物の PC 同様にグリグリ移動できます！
-- **最大 100×100 の超特大スクリーン対応**: 映画館スクリーン（32×18、48×27）やスタジアムメガビジョン（64×36）など、最大 100×100 ブロックの超巨大スクリーンを作成可能。
-- **1:1 連動リモコン棒**: 画面ごとに専用のリモコン棒を付与。棒を持っている時だけ視線ポインターが表示され、遠隔クリック・スクロールができます。
-- **SMP（マルチサーバー）安全設計**: 荒らしに悪用されやすい画面の強制撤去やリモコン強奪は管理者（OP）のみに制限。一般プレイヤー同士の画面へのいたずらを防止します。
+This repository organizes development branches using `<mc-version>-<loader>` naming conventions:
+
+- **`main`**: Primary active branch (tracking the latest stable release line, Fabric 1.21.x).
+- **`1.21-fabric`**: Dedicated branch for Minecraft 1.21.x on Fabric.
+- **`1.21-neoforge`**: (Future) Port for Minecraft 1.21.x on NeoForge.
+- **`1.20.x-<loader>`**: (Future) Backports for earlier Minecraft versions.
 
 ---
 
-### 🎮 リモコン棒の操作方法
-対応する**リモコン棒**を手（メインハンド）に持って操作します：
-- **右クリック**: マウスクリック（リンクを開く、入力欄のフォーカス）
-- **素早く2回右クリック**: ダブルクリック（フォルダ展開、拡大など）
-- **Shift + 右クリック**: **ドラッグ開始 / 終了**（つかむとカーソルが金色に変化！視線で移動し、もう一度クリックでドロップ）
-- **左クリック (素振り可)**: 上へスクロール ▲
-- **Shift + 左クリック**: 下へスクロール ▼
+## License
 
----
-
-### 💻 コマンド一覧
-
-#### 一般プレイヤー用コマンド（OP不要）
-| コマンド | 説明 |
-| :--- | :--- |
-| `/browser create [横] [縦]` | 最大 100x100 のディスプレイを設置し、専用リモコン棒を入手 |
-| `/browser destroy` | 手に持っているリモコン棒に対応する画面と棒を撤去 |
-| `/browser open <URLまたは検索語>` | ページを開く / Google検索 |
-| `/browser google <検索語>` | Google 検索を実行 |
-| `/browser reload` | 開いているページを再読み込み（リロード） |
-| `/browser back` / `forward` | 前のページに戻る / 次のページに進む |
-| `/browser type <テキスト>` | 選択中の入力欄に文字を入力 |
-| `/browser backspace [回数]` | 入力欄の文字を削除（短縮: `/browser bs`） |
-| `/browser enter` | 検索実行・フォーム送信の Enter キーを押す |
-| `/browser drag` | ドラッグモードのトグル（つかむ / 離す） |
-| `/browser click` / `rclick` / `dclick` | 左クリック / 右クリック / ダブルクリック |
-| `/browser scroll [up\|down\|数値]` | コマンドでスクロール（例: `/browser scroll down 200`） |
-| `/browser wand` | 付近10ブロック以内で最も近い画面のリモコン棒を再取得 |
-| `/browser list` | ワールド内の設置中ディスプレイ一覧、解像度、FPS、品質を表示 |
-| `/browser fps <FPS>` | 手持ち画面の描画FPSを変更 (1〜サーバー上限) |
-| `/browser quality <品質>` | 手持ち画面のJPEG圧縮品質を変更 (10〜100) (短縮: `/browser qual`) |
-| `/browser res <倍率>` | 手持ち画面の解像度倍率を変更 (0.5=低負荷, 1.0=標準, 2.0=高精細) (短縮: `/browser resolution`) |
-
-#### サーバー管理者用コマンド（OP必須）
-| コマンド | 説明 |
-| :--- | :--- |
-| `/browser destroy_near` | 棒が手元にない場合でも最寄りの画面を強制撤去 |
-| `/browser destroy_id <ID>` | 指定したIDの画面を強制撤去 |
-| `/browser wand_id <ID>` | 指定したIDのリモコン棒を強制取得 |
-| `/browser fps_id <ID> <FPS>` | 指定したIDの画面の描画FPSを強制変更 |
-| `/browser quality_id <ID> <品質>` | 指定したIDの画面のJPEG品質を強制変更 |
-| `/browser res_id <ID> <倍率>` | 指定したIDの画面の解像度倍率を強制変更 |
-| `/browser max_fps <FPS>` | サーバー全体の最大FPS上限を設定 (1〜60) |
-| `/browser max_quality <品質>` | サーバー全体の最大JPEG品質上限を設定 (10〜100) |
-| `/browser max_res <倍率>` | サーバー全体の最大解像度スケール上限を設定 (0.5〜4.0) |
-| `/browser reset` | 全画面を一括消去し、画面IDカウンターを #1 に完全リセット |
-
----
-
-### 📄 License
-MIT License. Free to use in modpacks, public servers, and redistributions.
+This project is licensed under the [MIT License](LICENSE).
