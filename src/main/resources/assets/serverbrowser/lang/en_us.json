@@ -51,7 +51,7 @@
   "serverbrowser.help.title": "§6==== [ServerBrowser Commands] ====",
   "serverbrowser.help.create": "§e/browser create [width] [height] §7- Create display and get Remote Wand",
   "serverbrowser.help.destroy": "§e/browser destroy §7- Destroy display and wand held in hand",
-  "serverbrowser.help.home": "§e/browser home §7- Return to default home page (alias: /bhome)",
+  "serverbrowser.help.home": "§e/browser home §7- Return to default home page",
   "serverbrowser.help.open": "§e/browser open <url/query> §7- Open web page or search query",
   "serverbrowser.help.google": "§e/browser google <query> §7- Search directly on Google",
   "serverbrowser.help.reload": "§e/browser reload §7- Reload current page",

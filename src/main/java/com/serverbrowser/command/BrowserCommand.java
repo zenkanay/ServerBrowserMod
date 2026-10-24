@@ -246,12 +246,6 @@ public class BrowserCommand {
                     )
                 )
         );
-
-        // /bhome ショートカットコマンド
-        dispatcher.register(
-            Commands.literal("bhome")
-                .executes(ctx -> goHome(ctx.getSource()))
-        );
     }
 
     private static int showHelp(CommandSourceStack source) {
