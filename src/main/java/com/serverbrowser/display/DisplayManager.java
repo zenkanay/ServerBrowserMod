@@ -262,25 +262,55 @@ public class DisplayManager {
 
     /**
      * 新しいディスプレイを作成（ワールド内の空き番号 1..N を自動割り当て）
+     * プレイヤーの向いている視線角度（ピッチ角）に応じて、壁（垂直面）、床（上向き）、天井（下向き）を自動判定して設置！
      */
     public ScreenInstance createScreen(ServerPlayer player, int widthTiles, int heightTiles) {
         ServerLevel level = (ServerLevel) player.level();
         cleanupGhostScreens(level.getServer());
 
-        Direction playerFacing = player.getDirection();
-        Direction screenFacing = playerFacing.getOpposite();
+        float pitch = player.getXRot(); // -90: 真上, 0: 水平, +90: 真下
+        Direction forwardDir = player.getDirection(); // プレイヤーの水平向いている方角 (NORTH, SOUTH, EAST, WEST)
+        Direction screenFacing;
+        Direction rightDir;
+        Direction downDir;
+        BlockPos originWallPos;
 
         BlockPos playerPos = player.blockPosition();
 
-        // 要件: 「自分の立っているブロックの自分が向いている方向のとなりに角が来るようにして」
-        // ディスプレイ（額縁）の左下角がプレイヤーの向いている方向の隣 (playerPos.relative(playerFacing, 1)) に位置し、
-        // 壁ブロックはその1つ奥 (playerPos.relative(playerFacing, 2)) に配置される
-        BlockPos wallBaseCorner = playerPos.relative(playerFacing, 2);
-        BlockPos originWallPos = wallBaseCorner.above(heightTiles - 1);
+        if (pitch > 40.0f) {
+            // 【床面（上向き）ディスプレイ】足元を見下ろしている場合
+            // 額縁は床ブロックの上面に上向き（UP）に設置
+            screenFacing = Direction.UP;
+            rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
+            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側（足元側）が画面の下端
+
+            // プレイヤーの足元のブロック(below)の目の前から奥に向かって広がる
+            // x=0, y=0（奥・左端）の基盤ブロック座標
+            originWallPos = playerPos.below().relative(forwardDir, heightTiles);
+        } else if (pitch < -40.0f) {
+            // 【天井（下向き）ディスプレイ】天井を見上げている場合
+            // 額縁は天井ブロックの下面に下向き（DOWN）に設置
+            screenFacing = Direction.DOWN;
+            rightDir = forwardDir.getClockWise(); // プレイヤーから見て右側が X 軸
+            downDir = forwardDir.getOpposite();   // プレイヤーから見て手前側が画面の下端
+
+            // プレイヤーの頭上ブロック(above(3))の目の前から奥に向かって広がる
+            // x=0, y=0（奥・左端）の基盤ブロック座標
+            originWallPos = playerPos.above(3).relative(forwardDir, heightTiles);
+        } else {
+            // 【通常の壁面ディスプレイ】水平を向いている場合
+            screenFacing = forwardDir.getOpposite();
+            rightDir = screenFacing.getCounterClockWise();
+            downDir = Direction.DOWN;
+
+            // ディスプレイ（額縁）の左下角がプレイヤーの向いている方向の隣に位置し、壁はその1つ奥
+            BlockPos wallBaseCorner = playerPos.relative(forwardDir, 2);
+            originWallPos = wallBaseCorner.above(heightTiles - 1);
+        }
 
         int screenId = getNextAvailableId(level.getServer());
         int baseMapId = allocateBaseMapId();
-        ScreenInstance screen = new ScreenInstance(screenId, level, originWallPos, screenFacing, widthTiles, heightTiles, baseMapId);
+        ScreenInstance screen = new ScreenInstance(screenId, level, originWallPos, screenFacing, rightDir, downDir, widthTiles, heightTiles, baseMapId);
         screen.buildScreen();
         screen.sendInitialBlankScreen(level.getServer());
         screens.put(screenId, screen);
@@ -559,11 +589,12 @@ public class DisplayManager {
      * プレイヤーとディスプレイ画面（全タイル面）との正確な最短距離の2乗を計算
      */
     private double getDistanceSqToScreen(ServerPlayer player, ScreenInstance screen) {
-        Direction rightDir = screen.getFacing().getCounterClockWise();
+        Direction rightDir = screen.getRightDir();
+        Direction downDir = screen.getDownDir();
         double minDistSq = Double.MAX_VALUE;
         for (int y = 0; y < screen.getHeightTiles(); y++) {
             for (int x = 0; x < screen.getWidthTiles(); x++) {
-                BlockPos framePos = screen.getOriginWallPos().relative(rightDir, x).below(y).relative(screen.getFacing());
+                BlockPos framePos = screen.getOriginWallPos().relative(rightDir, x).relative(downDir, y).relative(screen.getFacing());
                 double distSq = player.distanceToSqr(framePos.getX() + 0.5, framePos.getY() + 0.5, framePos.getZ() + 0.5);
                 if (distSq < minDistSq) {
                     minDistSq = distSq;
@@ -592,6 +623,8 @@ public class DisplayManager {
         public int originY;
         public int originZ;
         public String facing;
+        public String rightDir;
+        public String downDir;
         public int widthTiles;
         public int heightTiles;
         public int baseMapId;
@@ -633,6 +666,8 @@ public class DisplayManager {
                 data.originY = s.getOriginWallPos().getY();
                 data.originZ = s.getOriginWallPos().getZ();
                 data.facing = s.getFacing().getName();
+                data.rightDir = s.getRightDir().getName();
+                data.downDir = s.getDownDir().getName();
                 data.widthTiles = s.getWidthTiles();
                 data.heightTiles = s.getHeightTiles();
                 data.baseMapId = s.getBaseMapId();
@@ -688,9 +723,14 @@ public class DisplayManager {
                 Direction facing = Direction.byName(data.facing);
                 if (facing == null) facing = Direction.SOUTH;
 
+                Direction rightDir = Direction.byName(data.rightDir);
+                Direction downDir = Direction.byName(data.downDir);
+                if (rightDir == null) rightDir = ScreenInstance.getDefaultRightDir(facing);
+                if (downDir == null) downDir = ScreenInstance.getDefaultDownDir(facing);
+
                 BlockPos origin = new BlockPos(data.originX, data.originY, data.originZ);
                 int baseMapId = data.baseMapId > 0 ? data.baseMapId : allocateBaseMapId();
-                ScreenInstance screen = new ScreenInstance(data.id, level, origin, facing, data.widthTiles, data.heightTiles, baseMapId);
+                ScreenInstance screen = new ScreenInstance(data.id, level, origin, facing, rightDir, downDir, data.widthTiles, data.heightTiles, baseMapId);
                 screen.setCurrentTarget(data.url != null && !data.url.isEmpty() ? data.url : "https://www.google.com");
                 screen.setScrollY(data.scrollY);
                 if (data.fps > 0) screen.setFps(data.fps);

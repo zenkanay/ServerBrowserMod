@@ -36,6 +36,8 @@ public class ScreenInstance {
     private final ServerLevel level;
     private final BlockPos originWallPos;
     private final Direction facing;
+    private final Direction rightDir;
+    private final Direction downDir;
     private final List<ItemFrame> frames = new ArrayList<>();
     private final List<BlockPos> placedBlocks = new ArrayList<>();
 
@@ -83,14 +85,20 @@ public class ScreenInstance {
     private int roundRobinScanIndex = 0;
 
     public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, int widthTiles, int heightTiles) {
-        this(id, level, originWallPos, facing, widthTiles, heightTiles, 1000000 + (id * 10000));
+        this(id, level, originWallPos, facing, getDefaultRightDir(facing), getDefaultDownDir(facing), widthTiles, heightTiles, 1000000 + (id * 10000));
     }
 
     public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, int widthTiles, int heightTiles, int baseMapId) {
+        this(id, level, originWallPos, facing, getDefaultRightDir(facing), getDefaultDownDir(facing), widthTiles, heightTiles, baseMapId);
+    }
+
+    public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, Direction rightDir, Direction downDir, int widthTiles, int heightTiles, int baseMapId) {
         this.id = id;
         this.level = level;
         this.originWallPos = originWallPos;
         this.facing = facing;
+        this.rightDir = rightDir != null ? rightDir : getDefaultRightDir(facing);
+        this.downDir = downDir != null ? downDir : getDefaultDownDir(facing);
         this.widthTiles = widthTiles;
         this.heightTiles = heightTiles;
         this.baseMapId = baseMapId;
@@ -101,6 +109,37 @@ public class ScreenInstance {
             this.quality = config.defaultQuality;
             this.scale = config.defaultScale;
         }
+    }
+
+    public static Direction getDefaultRightDir(Direction facing) {
+        if (facing.getAxis() != Direction.Axis.Y) {
+            return facing.getCounterClockWise();
+        }
+        return Direction.EAST;
+    }
+
+    public static Direction getDefaultDownDir(Direction facing) {
+        if (facing.getAxis() != Direction.Axis.Y) {
+            return Direction.DOWN;
+        }
+        return Direction.NORTH;
+    }
+
+    /**
+     * 床（UP）または天井（DOWN）の場合、画面の上方向（downDir の反対）に合わせて額縁の回転角を取得
+     * 0: 0度(NORTH), 2: 90度(EAST), 4: 180度(SOUTH), 6: 270度(WEST)
+     */
+    public int getFrameRotation() {
+        if (facing.getAxis() != Direction.Axis.Y) {
+            return 0; // 垂直な壁面は通常向き（0）
+        }
+        Direction topDir = downDir.getOpposite();
+        return switch (topDir) {
+            case EAST -> 2;
+            case SOUTH -> 4;
+            case WEST -> 6;
+            default -> 0; // NORTH
+        };
     }
 
     public int getId() { return id; }
@@ -119,6 +158,8 @@ public class ScreenInstance {
     public int getPointerY() { return pointerY; }
 
     public Direction getFacing() { return facing; }
+    public Direction getRightDir() { return rightDir; }
+    public Direction getDownDir() { return downDir; }
     public ServerLevel getLevel() { return level; }
     public BlockPos getOriginWallPos() { return originWallPos; }
     public boolean isSearchBarSelected() { return isSearchBarSelected; }
@@ -143,11 +184,11 @@ public class ScreenInstance {
     public int getRenderHeight() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelHeight() * scale))); }
 
     public void buildScreen() {
-        Direction rightDir = facing.getCounterClockWise();
+        int rotation = getFrameRotation();
 
         for (int y = 0; y < heightTiles; y++) {
             for (int x = 0; x < widthTiles; x++) {
-                BlockPos wallPos = originWallPos.relative(rightDir, x).below(y);
+                BlockPos wallPos = originWallPos.relative(rightDir, x).relative(downDir, y);
 
                 // 壁ブロック（黒コンクリート）を設置
                 level.setBlock(wallPos, Blocks.BLACK_CONCRETE.defaultBlockState(), 3);
@@ -169,6 +210,9 @@ public class ScreenInstance {
                 mapStack.set(DataComponents.MAP_ID, mapId);
 
                 frame.setItem(mapStack, false);
+                if (rotation != 0) {
+                    frame.setRotation(rotation);
+                }
                 frame.setInvisible(true); // 額縁の木枠を透明化（ベゼルレス液晶化）
                 frame.setInvulnerable(true); // 破壊防止
 
@@ -220,9 +264,8 @@ public class ScreenInstance {
     }
 
     public net.minecraft.world.phys.AABB getScreenBoundingBox() {
-        Direction rightDir = facing.getCounterClockWise();
         BlockPos corner1 = originWallPos.relative(facing);
-        BlockPos corner2 = originWallPos.relative(rightDir, widthTiles - 1).below(heightTiles - 1).relative(facing);
+        BlockPos corner2 = originWallPos.relative(rightDir, widthTiles - 1).relative(downDir, heightTiles - 1).relative(facing);
         return new net.minecraft.world.phys.AABB(corner1).minmax(new net.minecraft.world.phys.AABB(corner2)).inflate(2.0);
     }
 
@@ -231,8 +274,8 @@ public class ScreenInstance {
      * 重複額縁をアイテム化させずに整理し、二重召喚による額縁ドロップを完全防止！
      */
     public void bindExistingFrames(MinecraftServer server) {
-        Direction rightDir = facing.getCounterClockWise();
         net.minecraft.world.phys.AABB box = getScreenBoundingBox();
+        int rotation = getFrameRotation();
 
         // 画面領域内のすべての額縁を検出
         List<ItemFrame> existingFrames = level.getEntitiesOfClass(ItemFrame.class, box);
@@ -240,7 +283,7 @@ public class ScreenInstance {
         frames.clear();
         for (int y = 0; y < heightTiles; y++) {
             for (int x = 0; x < widthTiles; x++) {
-                BlockPos wallPos = originWallPos.relative(rightDir, x).below(y);
+                BlockPos wallPos = originWallPos.relative(rightDir, x).relative(downDir, y);
                 BlockPos framePos = wallPos.relative(facing);
 
                 int mapIdNum = baseMapId + (y * widthTiles + x);
@@ -266,12 +309,14 @@ public class ScreenInstance {
                     // ワールドに額縁がまだ存在しない場合のみ新規生成
                     chosen = new ItemFrame(level, framePos, facing);
                     chosen.setItem(mapStack, false);
+                    if (rotation != 0) chosen.setRotation(rotation);
                     chosen.setInvisible(true);
                     chosen.setInvulnerable(true);
                     setFrameFixedAndUndroppable(chosen);
                     level.addFreshEntity(chosen);
                 } else {
                     chosen.setItem(mapStack, false);
+                    if (rotation != 0) chosen.setRotation(rotation);
                     chosen.setInvisible(true);
                     chosen.setInvulnerable(true);
                     setFrameFixedAndUndroppable(chosen);
@@ -297,13 +342,12 @@ public class ScreenInstance {
     public void rebindOrRebuildScreen() {
         level.getChunk(originWallPos);
 
-        Direction rightDir = facing.getCounterClockWise();
         placedBlocks.clear();
         lastTileColors.clear();
 
         for (int y = 0; y < heightTiles; y++) {
             for (int x = 0; x < widthTiles; x++) {
-                BlockPos wallPos = originWallPos.relative(rightDir, x).below(y);
+                BlockPos wallPos = originWallPos.relative(rightDir, x).relative(downDir, y);
                 placedBlocks.add(wallPos);
 
                 // 壁ブロックの存在を保証（すでに黒コンクリートなら再設置せずブロック更新を抑制）
@@ -571,8 +615,6 @@ public class ScreenInstance {
         Vec3 eyePos = player.getEyePosition();
         Vec3 viewVec = player.getViewVector(1.0f);
 
-        Direction rightDir = facing.getCounterClockWise();
-
         // スクリーンの左上表面の中心座標
         // 額縁の厚み（壁から約0.03〜0.0625）
         double surfaceOffset = 0.0625;
@@ -602,7 +644,7 @@ public class ScreenInstance {
         // originTopLeft から hitPos への相対ベクトル
         Vec3 diff = hitPos.subtract(originTopLeft);
         Vec3 rightVec = rightDir.getUnitVec3();
-        Vec3 downVec = new Vec3(0, -1, 0);
+        Vec3 downVec = downDir.getUnitVec3();
 
         double u = diff.dot(rightVec) + 0.5; // [0, widthTiles]
         double v = diff.dot(downVec) + 0.5;  // [0, heightTiles]
@@ -872,10 +914,9 @@ public class ScreenInstance {
         if (frames.contains(frame)) return true;
         if (!frame.level().equals(level) || frame.getDirection() != facing) return false;
 
-        Direction rightDir = facing.getCounterClockWise();
         for (int y = 0; y < heightTiles; y++) {
             for (int x = 0; x < widthTiles; x++) {
-                BlockPos wallPos = originWallPos.relative(rightDir, x).below(y);
+                BlockPos wallPos = originWallPos.relative(rightDir, x).relative(downDir, y);
                 BlockPos framePos = wallPos.relative(facing);
                 if (frame.blockPosition().equals(framePos)) {
                     return true;
