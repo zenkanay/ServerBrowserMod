@@ -1399,9 +1399,9 @@ public class DisplayManager {
         }
 
         if (player.isShiftKeyDown()) {
-            scroll(player, 150, server); // Shift + 左クリックは「下スクロール ▼」
+            scroll(player, 80, server); // Shift + 左クリックは「下スクロール ▼」
         } else {
-            scroll(player, -150, server); // 左クリックは「上スクロール ▲」
+            scroll(player, -80, server); // 左クリックは「上スクロール ▲」
         }
         return true;
     }
