@@ -14,11 +14,12 @@
 ### ✨ Key Features
 - **100% Server-Side**: Players do **NOT** need to install any mod! Vanilla clients can join and see the screens.
 - **Real Chromium CDP Engine**: Runs headless Chrome/Edge in the background with Chrome DevTools Protocol. Renders real CSS layouts, images, and HTML.
+- **Ultra-Smooth 14 FPS Autonomous Streaming**: GPU-accelerated CDP screencasting with worker-thread differential tile rendering. Zero server tick blocking.
+- **PC-Like Mouse Hover & Smart Auto-Hide**: Sight raycast triggers native CSS `:hover` states. Stationary sight for 1.5s smoothly auto-hides YouTube player controllers and cursor for an immersive full-screen cinematic experience.
+- **Mouse Click & Drag**: Grab and slide YouTube seek bars, volume controls, Google Maps panning, and text selection just like on a real PC!
+- **Gigantic Displays (Up to 100x100)**: Create theater screens (32x18, 48x27), stadium megavisions (64x36), or up to 100x100 blocks with dedicated map ID ranges and auto-distance packet scaling.
 - **Multiple Independent Screens**: Place as many displays as you want in your world! Each display has its own independent browser tab and isolated incognito session.
 - **Dedicated Remote Wands (1:1 Binding)**: Automatic wand given per display. Mouse pointer only appears and interacts when holding the corresponding wand.
-- **Real-Time Live Auto-Refresh**: When a website changes (e.g. YouTube video playing, loading finished, animations), the in-game display updates automatically!
-- **Smooth Navigation & Anti-Bot Stealth**: Built-in anti-detection stealth technology eliminates reCAPTCHA prompts.
-- **Universal Deep Scroller**: Scrolls any inner container (YouTube Short comments, nested chat boxes, modals) dynamically.
 - **SMP Safe & Grief Protected**: Remote wand locks item frames from unauthorized punches and rotations. Dangerous commands require server operator (OP) permission.
 
 ---
@@ -26,8 +27,11 @@
 ### 🎮 Controls (Remote Wand)
 Hold the dedicated **Remote Wand** in hand to interact:
 - **Right Click**: Mouse Click (Focus input boxes, click links/buttons)
-- **Left Click (Punch / Swing)**: Scroll Up ▲ (Instant JavaScript smooth scroll)
-- **Shift + Right Click**: Scroll Down ▼
+- **Quick Double Right Click**: Double Click (Native double-click trigger)
+- **Shift + Right Click**: **Mouse Drag Toggle** (Grab seek bars, sliders, maps; cursor turns gold, click again to drop!)
+- **Left Click**: Scroll Up ▲
+- **Shift + Left Click**: Scroll Down ▼
+- **/browser drag**: Toggle mouse drag mode via command
 
 ---
 
@@ -36,7 +40,7 @@ Hold the dedicated **Remote Wand** in hand to interact:
 #### Standard Player Commands (No OP required)
 | Command | Description |
 | :--- | :--- |
-| `/browser create [width] [height]` | Spawn display and receive dedicated Remote Wand |
+| `/browser create [width] [height]` | Spawn display (up to 100x100) and receive dedicated Remote Wand |
 | `/browser destroy` | Destroy the display and wand currently held in hand |
 | `/browser open <url or query>` | Open website or search query |
 | `/browser google <query>` | Shortcut for Google Search |
@@ -45,6 +49,7 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser type <text>` | Type text into active input field |
 | `/browser backspace [count]` | Send Backspace to delete characters (alias: `/browser bs`) |
 | `/browser enter` | Press Enter key to submit search or form |
+| `/browser drag` | Toggle mouse click & drag mode |
 | `/browser click` / `rclick` / `dclick` | Mouse Click / Right Click / Double Click at cursor |
 | `/browser scroll [up\|down\|amount]` | Scroll page via command (e.g. `/browser scroll up 200`) |
 | `/browser wand` | Reacquire Remote Wand for the closest display within 10 blocks |
@@ -65,11 +70,12 @@ Hold the dedicated **Remote Wand** in hand to interact:
 {
   "customChromePath": "",
   "defaultUrl": "https://www.google.com",
-  "maxDisplayWidth": 20,
-  "maxDisplayHeight": 20,
-  "maxTotalScreens": 50,
+  "maxDisplayWidth": 100,
+  "maxDisplayHeight": 100,
+  "maxTotalScreens": 100,
   "requireOpToCreate": false,
-  "liveRefreshIntervalMs": 400,
+  "liveRefreshIntervalMs": 100,
+  "maxInteractionDistance": 96.0,
   "enableStealthMode": true,
   "blockedDomains": []
 }
@@ -81,19 +87,22 @@ Hold the dedicated **Remote Wand** in hand to interact:
 
 ### ✨ 主な特徴
 - **完全サーバーサイド動作**: クライアント側の mod 導入は一切不要！バニラクライアントで参加してそのまま巨大ディスプレイのブラウザを楽しめます。
-- **本物の Chrome による完全レンダリング**: バックグラウンドの Chrome/Chromium を常駐制御。本物の Web サイト（Google検索、YouTube、記事本文、画像、CSSレイアウト）がそのまま表示されます。
-- **何枚でも置けるマルチディスプレイ**: ワールド内に何台でも画面を自由設置可能。各画面が専用の Chrome タブ・完全分離されたインコグニートセッションを持つため、ログイン情報やデータは引き継がれません。
-- **1:1 連動リモコン棒**: 画面ごとに専用のリモコン棒を付与。棒を手に持っている時だけ視線ポインターが表示され、遠隔クリック・スクロールができます。棒を持っているときは額縁の回転や破壊が完全に防止されます。
-- **深層コンテナ対応スクロール**: YouTube Short のコメント欄やモーダルウィンドウなど、画面内のあらゆるスクロール可能エリアを自動検出し、的確にスクロールできます。
+- **超高速 13〜14 FPS 自律ストリーミング**: Chrome の GPU Screencast を直接受信し、ワーカースレッドでタイル差分処理。サーバー Tick を 0.01ms もブロックしません。
+- **PC ライクなマウスホバー＆スマート自動非表示**: 視線移動でリアルな `:hover` スタイルが発動。画面をじっと見つめると 1.5 秒でカーソルや YouTube のコントローラー・暗い影が自動でフェードアウトし、動画本体だけが最高画質でクリア再生されます。
+- **マウス クリック＆ドラッグ対応**: `Shift + 右クリック` でつかみ、視線で YouTube のシークバーや音量、Google マップの移動、テキスト選択などを本物の PC 同様にグリグリ移動できます！
+- **最大 100×100 の超特大スクリーン対応**: 映画館スクリーン（32×18、48×27）やスタジアムメガビジョン（64×36）など、最大 100×100 ブロックの超巨大スクリーンを作成可能。
+- **1:1 連動リモコン棒**: 画面ごとに専用のリモコン棒を付与。棒を持っている時だけ視線ポインターが表示され、遠隔クリック・スクロールができます。
 - **SMP（マルチサーバー）安全設計**: 荒らしに悪用されやすい画面の強制撤去やリモコン強奪は管理者（OP）のみに制限。一般プレイヤー同士の画面へのいたずらを防止します。
 
 ---
 
 ### 🎮 リモコン棒の操作方法
-対応する**リモコン棒**を手に持って操作します：
-- **右クリック**: マウスクリック（リンクを開く、入力欄の選択・フォーカス）
-- **左クリック (遠距離からの素振り可)**: 上へスクロール ▲
-- **Shift + 右クリック**: 下へスクロール ▼
+対応する**リモコン棒**を手（メインハンド）に持って操作します：
+- **右クリック**: マウスクリック（リンクを開く、入力欄のフォーカス）
+- **素早く2回右クリック**: ダブルクリック（フォルダ展開、拡大など）
+- **Shift + 右クリック**: **ドラッグ開始 / 終了**（つかむとカーソルが金色に変化！視線で移動し、もう一度クリックでドロップ）
+- **左クリック (素振り可)**: 上へスクロール ▲
+- **Shift + 左クリック**: 下へスクロール ▼
 
 ---
 
@@ -102,7 +111,7 @@ Hold the dedicated **Remote Wand** in hand to interact:
 #### 一般プレイヤー用コマンド（OP不要）
 | コマンド | 説明 |
 | :--- | :--- |
-| `/browser create [横] [縦]` | ディスプレイを設置し、専用のリモコン棒を入手 |
+| `/browser create [横] [縦]` | 最大 100x100 のディスプレイを設置し、専用リモコン棒を入手 |
 | `/browser destroy` | 手に持っているリモコン棒に対応する画面と棒を撤去 |
 | `/browser open <URLまたは検索語>` | ページを開く / Google検索 |
 | `/browser google <検索語>` | Google 検索を実行 |
@@ -111,6 +120,7 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser type <テキスト>` | 選択中の入力欄に文字を入力 |
 | `/browser backspace [回数]` | 入力欄の文字を削除（短縮: `/browser bs`） |
 | `/browser enter` | 検索実行・フォーム送信の Enter キーを押す |
+| `/browser drag` | ドラッグモードのトグル（つかむ / 離す） |
 | `/browser click` / `rclick` / `dclick` | 左クリック / 右クリック / ダブルクリック |
 | `/browser scroll [up\|down\|数値]` | コマンドでスクロール（例: `/browser scroll down 200`） |
 | `/browser wand` | 付近10ブロック以内で最も近い画面のリモコン棒を再取得 |
