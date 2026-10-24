@@ -437,6 +437,13 @@ public class CdpBrowserEngine implements IBrowserEngine {
     /**
      * 視線カーソルの位置に合わせてブラウザ内に mouseMoved イベントを送信（PCのような自然なホバー効果を発火）
      */
+    public void updateScreenSettings(int screenId, int baseWidth, int baseHeight, int quality, int fps, double scale) {
+        TabSession session = screenTabs.get(screenId);
+        if (session != null && session.isAlive()) {
+            session.updateSettings(baseWidth, baseHeight, quality, fps, scale);
+        }
+    }
+
     public void dispatchMouseMove(int screenId, int x, int y) {
         TabSession session = screenTabs.get(screenId);
         if (session != null && session.isAlive()) {
@@ -616,6 +623,13 @@ public class CdpBrowserEngine implements IBrowserEngine {
         private boolean connected = false;
         private volatile boolean screencastActive = false;
         private long lastScreencastFrameTime = 0;
+
+        // 画面個別設定（FPS、JPEG品質、解像度スケール）
+        private int currentWidth = 128;
+        private int currentHeight = 128;
+        private int targetFps = 14;
+        private int targetQuality = 75;
+        private double scale = 1.0;
 
         public TabSession(int screenId, String browserContextId, String targetId, String wsUrl, String currentUrl) {
             this.screenId = screenId;
@@ -799,11 +813,14 @@ public class CdpBrowserEngine implements IBrowserEngine {
             lastSentMouseX = x;
             lastSentMouseY = y;
 
+            int sx = (x < 0) ? x : (int) Math.round(x * scale);
+            int sy = (y < 0) ? y : (int) Math.round(y * scale);
+
             try {
                 Map<String, Object> moveParams = new HashMap<>();
                 moveParams.put("type", "mouseMoved");
-                moveParams.put("x", Math.max(-100, x));
-                moveParams.put("y", Math.max(-100, y));
+                moveParams.put("x", Math.max(-100, sx));
+                moveParams.put("y", Math.max(-100, sy));
                 moveParams.put("pointerType", "mouse");
                 sendCommand("Input.dispatchMouseEvent", moveParams);
             } catch (Exception ignored) {}
@@ -821,11 +838,14 @@ public class CdpBrowserEngine implements IBrowserEngine {
             lastSentMouseX = x;
             lastSentMouseY = y;
 
+            int sx = (x < 0) ? x : (int) Math.round(x * scale);
+            int sy = (y < 0) ? y : (int) Math.round(y * scale);
+
             try {
                 Map<String, Object> moveParams = new HashMap<>();
                 moveParams.put("type", "mouseMoved");
-                moveParams.put("x", Math.max(-100, x));
-                moveParams.put("y", Math.max(-100, y));
+                moveParams.put("x", Math.max(-100, sx));
+                moveParams.put("y", Math.max(-100, sy));
                 moveParams.put("button", "left");
                 moveParams.put("buttons", 1); // 左ボタンドラッグ中！
                 moveParams.put("pointerType", "mouse");
@@ -834,11 +854,13 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public void dispatchMousePress(int x, int y) {
+            int sx = (x < 0) ? x : (int) Math.round(x * scale);
+            int sy = (y < 0) ? y : (int) Math.round(y * scale);
             try {
                 Map<String, Object> pressParams = new HashMap<>();
                 pressParams.put("type", "mousePressed");
-                pressParams.put("x", Math.max(0, x));
-                pressParams.put("y", Math.max(0, y));
+                pressParams.put("x", Math.max(0, sx));
+                pressParams.put("y", Math.max(0, sy));
                 pressParams.put("button", "left");
                 pressParams.put("buttons", 1);
                 pressParams.put("clickCount", 1);
@@ -848,11 +870,13 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public void dispatchMouseRelease(int x, int y) {
+            int sx = (x < 0) ? x : (int) Math.round(x * scale);
+            int sy = (y < 0) ? y : (int) Math.round(y * scale);
             try {
                 Map<String, Object> releaseParams = new HashMap<>();
                 releaseParams.put("type", "mouseReleased");
-                releaseParams.put("x", Math.max(0, x));
-                releaseParams.put("y", Math.max(0, y));
+                releaseParams.put("x", Math.max(0, sx));
+                releaseParams.put("y", Math.max(0, sy));
                 releaseParams.put("button", "left");
                 releaseParams.put("buttons", 0);
                 releaseParams.put("clickCount", 1);
@@ -862,20 +886,22 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public BufferedImage performClick(int x, int y, int clickCount, int width, int height) throws Exception {
+            int sx = (int) Math.round(x * scale);
+            int sy = (int) Math.round(y * scale);
             if (clickCount >= 2) {
                 // CDP での完全なダブルクリックシーケンス（clickCount 1 -> 2 をアトミックに送信）
                 Map<String, Object> p1 = new HashMap<>();
                 p1.put("type", "mousePressed");
-                p1.put("x", x);
-                p1.put("y", y);
+                p1.put("x", sx);
+                p1.put("y", sy);
                 p1.put("button", "left");
                 p1.put("clickCount", 1);
                 sendCommand("Input.dispatchMouseEvent", p1).get(1, TimeUnit.SECONDS);
 
                 Map<String, Object> r1 = new HashMap<>();
                 r1.put("type", "mouseReleased");
-                r1.put("x", x);
-                r1.put("y", y);
+                r1.put("x", sx);
+                r1.put("y", sy);
                 r1.put("button", "left");
                 r1.put("clickCount", 1);
                 sendCommand("Input.dispatchMouseEvent", r1).get(1, TimeUnit.SECONDS);
@@ -884,16 +910,16 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
                 Map<String, Object> p2 = new HashMap<>();
                 p2.put("type", "mousePressed");
-                p2.put("x", x);
-                p2.put("y", y);
+                p2.put("x", sx);
+                p2.put("y", sy);
                 p2.put("button", "left");
                 p2.put("clickCount", 2);
                 sendCommand("Input.dispatchMouseEvent", p2).get(1, TimeUnit.SECONDS);
 
                 Map<String, Object> r2 = new HashMap<>();
                 r2.put("type", "mouseReleased");
-                r2.put("x", x);
-                r2.put("y", y);
+                r2.put("x", sx);
+                r2.put("y", sy);
                 r2.put("button", "left");
                 r2.put("clickCount", 2);
                 sendCommand("Input.dispatchMouseEvent", r2).get(1, TimeUnit.SECONDS);
@@ -901,16 +927,16 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 // 通常のシングルクリック
                 Map<String, Object> pressParams = new HashMap<>();
                 pressParams.put("type", "mousePressed");
-                pressParams.put("x", x);
-                pressParams.put("y", y);
+                pressParams.put("x", sx);
+                pressParams.put("y", sy);
                 pressParams.put("button", "left");
                 pressParams.put("clickCount", 1);
                 sendCommand("Input.dispatchMouseEvent", pressParams).get(1, TimeUnit.SECONDS);
 
                 Map<String, Object> releaseParams = new HashMap<>();
                 releaseParams.put("type", "mouseReleased");
-                releaseParams.put("x", x);
-                releaseParams.put("y", y);
+                releaseParams.put("x", sx);
+                releaseParams.put("y", sy);
                 releaseParams.put("button", "left");
                 releaseParams.put("clickCount", 1);
                 sendCommand("Input.dispatchMouseEvent", releaseParams).get(1, TimeUnit.SECONDS);
@@ -922,10 +948,12 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public BufferedImage performRightClick(int x, int y, int width, int height) throws Exception {
+            int sx = (int) Math.round(x * scale);
+            int sy = (int) Math.round(y * scale);
             Map<String, Object> pressParams = new HashMap<>();
             pressParams.put("type", "mousePressed");
-            pressParams.put("x", x);
-            pressParams.put("y", y);
+            pressParams.put("x", sx);
+            pressParams.put("y", sy);
             pressParams.put("button", "right");
             pressParams.put("clickCount", 1);
             sendCommand("Input.dispatchMouseEvent", pressParams).get(2, TimeUnit.SECONDS);
@@ -1130,18 +1158,57 @@ public class CdpBrowserEngine implements IBrowserEngine {
         }
 
         public void startScreencast(int width, int height) {
+            startScreencast(width, height, this.targetQuality, this.targetFps);
+        }
+
+        public void startScreencast(int width, int height, int quality, int fps) {
             try {
+                this.currentWidth = width;
+                this.currentHeight = height;
+                this.targetQuality = Math.max(10, Math.min(100, quality));
+                this.targetFps = Math.max(1, Math.min(60, fps));
+
                 Map<String, Object> params = new HashMap<>();
                 params.put("format", "jpeg");
-                params.put("quality", 75);
+                params.put("quality", this.targetQuality);
                 params.put("maxWidth", Math.max(128, width));
                 params.put("maxHeight", Math.max(128, height));
                 params.put("everyNthFrame", 1);
                 sendCommand("Page.startScreencast", params);
                 this.screencastActive = true;
-                LOGGER.info("Started high-speed CDP Page.startScreencast for screen #{} ({}x{})", screenId, width, height);
+                LOGGER.info("Started high-speed CDP Page.startScreencast for screen #{} ({}x{}, {} FPS, {}% quality)",
+                    screenId, width, height, this.targetFps, this.targetQuality);
             } catch (Exception e) {
                 LOGGER.warn("Failed to start screencast for screen #{}: {}", screenId, e.getMessage());
+            }
+        }
+
+        public void updateSettings(int baseWidth, int baseHeight, int quality, int fps, double scale) {
+            try {
+                this.targetQuality = Math.max(10, Math.min(100, quality));
+                this.targetFps = Math.max(1, Math.min(60, fps));
+                this.scale = Math.max(0.25, Math.min(4.0, scale));
+
+                int renderW = Math.max(128, (int) Math.round(baseWidth * this.scale));
+                int renderH = Math.max(128, (int) Math.round(baseHeight * this.scale));
+                this.currentWidth = renderW;
+                this.currentHeight = renderH;
+
+                // 1. 解像度（DeviceMetrics）の動的更新
+                Map<String, Object> metrics = new HashMap<>();
+                metrics.put("width", renderW);
+                metrics.put("height", renderH);
+                metrics.put("deviceScaleFactor", 1);
+                metrics.put("mobile", false);
+                sendCommand("Emulation.setDeviceMetricsOverride", metrics);
+
+                // 2. Screencast を再起動して新設定（FPS・品質・解像度）を即時適用
+                stopScreencast();
+                startScreencast(renderW, renderH, this.targetQuality, this.targetFps);
+                LOGGER.info("Updated screen #{} settings: {}x{} (scale: {}x), {} FPS, {}% quality",
+                    screenId, renderW, renderH, this.scale, this.targetFps, this.targetQuality);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to update settings for screen #{}: {}", screenId, e.getMessage());
             }
         }
 
@@ -1178,10 +1245,11 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 }
                 final String base64 = msg.substring(quoteStart + 1, quoteEnd);
 
-                // 3. フレームレート安定化制御（最小間隔 75ms = 約 13.3 FPS の滑らかな等間隔ストリーム）
+                // 3. フレームレート安定化制御（目標 FPS に応じた正確なフレーム間隔ディレイ）
+                long targetInterval = Math.max(16, 1000 / Math.max(1, targetFps));
                 long now = System.currentTimeMillis();
                 long elapsed = now - lastScreencastFrameTime;
-                long delay = Math.max(0, 75 - elapsed);
+                long delay = Math.max(0, targetInterval - elapsed);
 
                 screencastExecutor.submit(() -> {
                     try {

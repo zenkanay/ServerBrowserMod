@@ -53,7 +53,10 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser click` / `rclick` / `dclick` | Mouse Click / Right Click / Double Click at cursor |
 | `/browser scroll [up\|down\|amount]` | Scroll page via command (e.g. `/browser scroll up 200`) |
 | `/browser wand` | Reacquire Remote Wand for the closest display within 10 blocks |
-| `/browser list` | View list of all active displays |
+| `/browser list` | View list of all active displays, resolutions, FPS, and limits |
+| `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
+| `/browser quality <10-100>` | Set JPEG compression quality for held display (alias: `/browser qual`) |
+| `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 1.5, 2.0) (alias: `/browser resolution`) |
 
 #### Admin / Operator Commands (OP Required)
 | Command | Description |
@@ -61,6 +64,12 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser destroy_near` | Force remove nearest display without holding wand |
 | `/browser destroy_id <id>` | Force remove specific display by ID |
 | `/browser wand_id <id>` | Obtain Remote Wand for any specific display by ID |
+| `/browser fps_id <id> <fps>` | Force set frame rate for specific display by ID |
+| `/browser quality_id <id> <quality>` | Force set JPEG quality for specific display by ID |
+| `/browser res_id <id> <scale>` | Force set resolution scale for specific display by ID |
+| `/browser max_fps <fps>` | Configure server-wide maximum FPS limit (1 to 60) |
+| `/browser max_quality <quality>` | Configure server-wide maximum JPEG quality limit (10 to 100) |
+| `/browser max_res <scale>` | Configure server-wide maximum resolution scale limit (0.5 to 4.0) |
 | `/browser reset` | Delete all displays and reset screen ID counter to #1 |
 
 ---
@@ -77,7 +86,13 @@ Hold the dedicated **Remote Wand** in hand to interact:
   "liveRefreshIntervalMs": 100,
   "maxInteractionDistance": 96.0,
   "enableStealthMode": true,
-  "blockedDomains": []
+  "blockedDomains": [],
+  "maxFps": 30,
+  "defaultFps": 14,
+  "maxQuality": 100,
+  "defaultQuality": 75,
+  "maxScale": 2.0,
+  "defaultScale": 1.0
 }
 ```
 
@@ -124,7 +139,10 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser click` / `rclick` / `dclick` | 左クリック / 右クリック / ダブルクリック |
 | `/browser scroll [up\|down\|数値]` | コマンドでスクロール（例: `/browser scroll down 200`） |
 | `/browser wand` | 付近10ブロック以内で最も近い画面のリモコン棒を再取得 |
-| `/browser list` | ワールド内の設置中ディスプレイ一覧を表示 |
+| `/browser list` | ワールド内の設置中ディスプレイ一覧、解像度、FPS、品質を表示 |
+| `/browser fps <FPS>` | 手持ち画面の描画FPSを変更 (1〜サーバー上限) |
+| `/browser quality <品質>` | 手持ち画面のJPEG圧縮品質を変更 (10〜100) (短縮: `/browser qual`) |
+| `/browser res <倍率>` | 手持ち画面の解像度倍率を変更 (0.5=低負荷, 1.0=標準, 2.0=高精細) (短縮: `/browser resolution`) |
 
 #### サーバー管理者用コマンド（OP必須）
 | コマンド | 説明 |
@@ -132,6 +150,12 @@ Hold the dedicated **Remote Wand** in hand to interact:
 | `/browser destroy_near` | 棒が手元にない場合でも最寄りの画面を強制撤去 |
 | `/browser destroy_id <ID>` | 指定したIDの画面を強制撤去 |
 | `/browser wand_id <ID>` | 指定したIDのリモコン棒を強制取得 |
+| `/browser fps_id <ID> <FPS>` | 指定したIDの画面の描画FPSを強制変更 |
+| `/browser quality_id <ID> <品質>` | 指定したIDの画面のJPEG品質を強制変更 |
+| `/browser res_id <ID> <倍率>` | 指定したIDの画面の解像度倍率を強制変更 |
+| `/browser max_fps <FPS>` | サーバー全体の最大FPS上限を設定 (1〜60) |
+| `/browser max_quality <品質>` | サーバー全体の最大JPEG品質上限を設定 (10〜100) |
+| `/browser max_res <倍率>` | サーバー全体の最大解像度スケール上限を設定 (0.5〜4.0) |
 | `/browser reset` | 全画面を一括消去し、画面IDカウンターを #1 に完全リセット |
 
 ---

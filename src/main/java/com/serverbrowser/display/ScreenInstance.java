@@ -65,6 +65,11 @@ public class ScreenInstance {
     // ドラッグ状態
     private volatile boolean isDragging = false;
 
+    // ディスプレイ個別の描画プロパティ（解像度スケール、FPS、JPEG品質）
+    private int fps = 14;
+    private int quality = 75;
+    private double scale = 1.0;
+
     public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, int widthTiles, int heightTiles) {
         this(id, level, originWallPos, facing, widthTiles, heightTiles, 1000000 + (id * 10000));
     }
@@ -77,6 +82,13 @@ public class ScreenInstance {
         this.widthTiles = widthTiles;
         this.heightTiles = heightTiles;
         this.baseMapId = baseMapId;
+
+        com.serverbrowser.config.ServerBrowserConfig config = com.serverbrowser.config.ServerBrowserConfig.get();
+        if (config != null) {
+            this.fps = config.defaultFps;
+            this.quality = config.defaultQuality;
+            this.scale = config.defaultScale;
+        }
     }
 
     public int getId() { return id; }
@@ -108,6 +120,15 @@ public class ScreenInstance {
         this.isPointerIdle = false;
         this.lastPointerMoveTime = System.currentTimeMillis();
     }
+
+    public int getFps() { return fps; }
+    public void setFps(int fps) { this.fps = fps; }
+    public int getQuality() { return quality; }
+    public void setQuality(int quality) { this.quality = quality; }
+    public double getScale() { return scale; }
+    public void setScale(double scale) { this.scale = scale; }
+    public int getRenderWidth() { return Math.max(128, (int) Math.round(getPixelWidth() * scale)); }
+    public int getRenderHeight() { return Math.max(128, (int) Math.round(getPixelHeight() * scale)); }
 
     public void buildScreen() {
         Direction rightDir = facing.getCounterClockWise();

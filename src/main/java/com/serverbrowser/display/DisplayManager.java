@@ -133,6 +133,10 @@ public class DisplayManager {
         return Collections.unmodifiableMap(screens);
     }
 
+    public ScreenInstance getScreen(int id) {
+        return screens.get(id);
+    }
+
     public void dispatchMouseMove(int screenId, int x, int y) {
         if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
             cdpEngine.dispatchMouseMove(screenId, x, y);
@@ -609,6 +613,9 @@ public class DisplayManager {
                 json.append("    \"facing\": \"").append(s.getFacing().getName()).append("\",\n");
                 json.append("    \"widthTiles\": ").append(s.getWidthTiles()).append(",\n");
                 json.append("    \"heightTiles\": ").append(s.getHeightTiles()).append(",\n");
+                json.append("    \"fps\": ").append(s.getFps()).append(",\n");
+                json.append("    \"quality\": ").append(s.getQuality()).append(",\n");
+                json.append("    \"scale\": ").append(s.getScale()).append(",\n");
                 json.append("    \"url\": \"").append(s.getCurrentTarget().replace("\"", "\\\"")).append("\",\n");
                 json.append("    \"scrollY\": ").append(s.getScrollY()).append("\n");
                 json.append("  }");
@@ -650,6 +657,9 @@ public class DisplayManager {
                 int h = extractInt(obj, "heightTiles");
                 String url = extractString(obj, "url");
                 int scrollY = extractInt(obj, "scrollY");
+                int savedFps = extractInt(obj, "fps");
+                int savedQuality = extractInt(obj, "quality");
+                double savedScale = extractDouble(obj, "scale");
 
                 if (id <= 0 || w <= 0 || h <= 0) continue;
 
@@ -668,6 +678,9 @@ public class DisplayManager {
                 ScreenInstance screen = new ScreenInstance(id, level, origin, facing, w, h);
                 screen.setCurrentTarget(url != null && !url.isEmpty() ? url : "https://www.google.com");
                 screen.setScrollY(scrollY);
+                if (savedFps > 0) screen.setFps(savedFps);
+                if (savedQuality > 0) screen.setQuality(savedQuality);
+                if (savedScale > 0.0) screen.setScale(savedScale);
 
                 // 額縁の再バインド・再構築
                 screen.rebindOrRebuildScreen();
@@ -703,9 +716,42 @@ public class DisplayManager {
         return m.find() ? Integer.parseInt(m.group(1)) : 0;
     }
 
+    private double extractDouble(String json, String key) {
+        Matcher m = Pattern.compile("\"" + key + "\":\\s*(-?\\d+(?:\\.\\d+)?)").matcher(json);
+        return m.find() ? Double.parseDouble(m.group(1)) : 0.0;
+    }
+
     private String extractString(String json, String key) {
         Matcher m = Pattern.compile("\"" + key + "\":\\s*\"([^\"]+)\"").matcher(json);
         return m.find() ? m.group(1) : "";
+    }
+
+    /**
+     * ディスプレイの描画プロパティ（FPS、JPEG品質、解像度スケール）を動的変更し永続化
+     */
+    public boolean updateScreenProperties(ScreenInstance screen, Integer fps, Integer quality, Double scale, MinecraftServer server) {
+        if (screen == null) return false;
+        com.serverbrowser.config.ServerBrowserConfig config = com.serverbrowser.config.ServerBrowserConfig.get();
+
+        if (fps != null) {
+            int targetFps = Math.max(1, Math.min(config.maxFps, fps));
+            screen.setFps(targetFps);
+        }
+        if (quality != null) {
+            int targetQual = Math.max(10, Math.min(config.maxQuality, quality));
+            screen.setQuality(targetQual);
+        }
+        if (scale != null) {
+            double targetScale = Math.max(0.25, Math.min(config.maxScale, scale));
+            screen.setScale(targetScale);
+        }
+
+        if (cdpEngine != null && cdpEngine.isAvailable()) {
+            cdpEngine.updateScreenSettings(screen.getId(), screen.getPixelWidth(), screen.getPixelHeight(), screen.getQuality(), screen.getFps(), screen.getScale());
+        }
+
+        saveScreens(server);
+        return true;
     }
 
     public void navigate(ServerPlayer player, String target, MinecraftServer server) {

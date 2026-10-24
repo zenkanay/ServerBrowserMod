@@ -1,6 +1,7 @@
 package com.serverbrowser.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.serverbrowser.config.ServerBrowserConfig;
@@ -159,6 +160,71 @@ public class BrowserCommand {
                 .then(Commands.literal("list")
                     .executes(ctx -> listScreens(ctx.getSource()))
                 )
+                // 16. FPS 設定: /browser fps <値> (手持ち画面用), /browser fps_id <id> <値> (OP専用)
+                .then(Commands.literal("fps")
+                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                        .executes(ctx -> setScreenFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
+                    )
+                )
+                .then(Commands.literal("fps_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                            .executes(ctx -> setScreenFpsById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "fps")))
+                        )
+                    )
+                )
+                // 17. JPEG 画質設定: /browser quality <値>, /browser qual <値>, /browser quality_id <id> <値>
+                .then(Commands.literal("quality")
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
+                    )
+                )
+                .then(Commands.literal("qual")
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
+                    )
+                )
+                .then(Commands.literal("quality_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                            .executes(ctx -> setScreenQualityById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "quality")))
+                        )
+                    )
+                )
+                // 18. 解像度スケール設定: /browser res <倍率>, /browser resolution <倍率>, /browser res_id <id> <倍率>
+                .then(Commands.literal("res")
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                        .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
+                    )
+                )
+                .then(Commands.literal("resolution")
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                        .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
+                    )
+                )
+                .then(Commands.literal("res_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.25, 4.0))
+                            .executes(ctx -> setScreenScaleById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), DoubleArgumentType.getDouble(ctx, "scale")))
+                        )
+                    )
+                )
+                // 19. OP専用: サーバー全体の最大上限設定
+                .then(Commands.literal("max_fps")
+                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                        .executes(ctx -> setServerMaxFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
+                    )
+                )
+                .then(Commands.literal("max_quality")
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .executes(ctx -> setServerMaxQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
+                    )
+                )
+                .then(Commands.literal("max_res")
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.5, 4.0))
+                        .executes(ctx -> setServerMaxScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
+                    )
+                )
         );
     }
 
@@ -178,10 +244,19 @@ public class BrowserCommand {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.scroll"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.res"), false);
         source.sendSuccess(() -> Component.literal("§c【管理者用コマンド (要OP)】"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_near"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_id"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.res_id"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_fps"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_quality"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_res"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.reset"), false);
         source.sendSuccess(() -> Component.literal("§7--------------------------------"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_title"), false);
@@ -192,6 +267,9 @@ public class BrowserCommand {
     }
 
     private static boolean isOperator(CommandSourceStack source, ServerPlayer player) {
+        if (player == null) {
+            return true;
+        }
         if (source.getServer().getPlayerList().isOp(new NameAndId(player.getGameProfile()))) {
             return true;
         }
@@ -199,6 +277,13 @@ public class BrowserCommand {
             return levelSet.level().isEqualOrHigherThan(PermissionLevel.GAMEMASTERS);
         }
         return false;
+    }
+
+    private static boolean checkOp(CommandSourceStack source) {
+        if (source.getEntity() instanceof ServerPlayer player) {
+            return isOperator(source, player);
+        }
+        return true; // サーバーコンソール等は常に管理者権限
     }
 
     private static int createScreen(CommandSourceStack source, int width, int height) {
@@ -416,15 +501,29 @@ public class BrowserCommand {
 
     private static int listScreens(CommandSourceStack source) {
         Map<Integer, ScreenInstance> screens = DisplayManager.getInstance().getAllScreens();
+        ServerBrowserConfig config = ServerBrowserConfig.get();
         if (screens.isEmpty()) {
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.no_screens"), false);
             return 1;
         }
 
-        source.sendSuccess(() -> Component.translatable("serverbrowser.msg.list_header", screens.size()), false);
+        source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.list_header", screens.size(),
+            String.format("%.2f", config.maxScale), config.maxFps, config.maxQuality
+        ), false);
+
         for (ScreenInstance s : screens.values()) {
             source.sendSuccess(() -> Component.translatable(
-                "serverbrowser.msg.list_item", s.getId(), s.getWidthTiles(), s.getHeightTiles(), s.getCurrentTarget()
+                "serverbrowser.msg.list_item",
+                s.getId(),
+                s.getWidthTiles(),
+                s.getHeightTiles(),
+                s.getRenderWidth(),
+                s.getRenderHeight(),
+                String.format("%.2f", s.getScale()),
+                s.getFps(),
+                s.getQuality(),
+                s.getCurrentTarget()
             ), false);
         }
         return 1;
@@ -460,6 +559,226 @@ public class BrowserCommand {
         try {
             ServerPlayer player = source.getPlayerOrException();
             DisplayManager.getInstance().toggleDrag(player, source.getServer());
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // --- FPS コマンド ---
+    private static int setScreenFps(CommandSourceStack source, int fps) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ScreenInstance screen = DisplayManager.getInstance().getHeldScreen(player);
+            if (screen == null) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.hold_wand_required"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (fps > config.maxFps) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.fps_limit_exceeded", fps, config.maxFps));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, fps, null, null, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.fps_changed", screen.getId(), fps), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setScreenFpsById(CommandSourceStack source, int id, int fps) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ScreenInstance screen = DisplayManager.getInstance().getScreen(id);
+            if (screen == null) {
+                source.sendFailure(Component.literal("§c[ServerBrowser] 画面 #" + id + " は存在しません。"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (fps > config.maxFps) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.fps_limit_exceeded", fps, config.maxFps));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, fps, null, null, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.fps_changed", screen.getId(), fps), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // --- JPEG 画質コマンド ---
+    private static int setScreenQuality(CommandSourceStack source, int quality) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ScreenInstance screen = DisplayManager.getInstance().getHeldScreen(player);
+            if (screen == null) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.hold_wand_required"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (quality > config.maxQuality) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.quality_limit_exceeded", quality, config.maxQuality));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, null, quality, null, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.quality_changed", screen.getId(), quality), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setScreenQualityById(CommandSourceStack source, int id, int quality) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ScreenInstance screen = DisplayManager.getInstance().getScreen(id);
+            if (screen == null) {
+                source.sendFailure(Component.literal("§c[ServerBrowser] 画面 #" + id + " は存在しません。"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (quality > config.maxQuality) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.quality_limit_exceeded", quality, config.maxQuality));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, null, quality, null, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.quality_changed", screen.getId(), quality), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // --- 解像度スケールコマンド ---
+    private static int setScreenScale(CommandSourceStack source, double rawScale) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ScreenInstance screen = DisplayManager.getInstance().getHeldScreen(player);
+            if (screen == null) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.hold_wand_required"));
+                return 0;
+            }
+
+            double scale = Math.round(rawScale * 100.0) / 100.0;
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (scale > config.maxScale + 0.001) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.scale_limit_exceeded", String.format("%.2f", scale), String.format("%.2f", config.maxScale)));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, null, null, scale, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.scale_changed", screen.getId(), String.format("%.2f", scale), screen.getRenderWidth(), screen.getRenderHeight()), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setScreenScaleById(CommandSourceStack source, int id, double rawScale) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ScreenInstance screen = DisplayManager.getInstance().getScreen(id);
+            if (screen == null) {
+                source.sendFailure(Component.literal("§c[ServerBrowser] 画面 #" + id + " は存在しません。"));
+                return 0;
+            }
+
+            double scale = Math.round(rawScale * 100.0) / 100.0;
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            if (scale > config.maxScale + 0.001) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.scale_limit_exceeded", String.format("%.2f", scale), String.format("%.2f", config.maxScale)));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenProperties(screen, null, null, scale, source.getServer());
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.scale_changed", screen.getId(), String.format("%.2f", scale), screen.getRenderWidth(), screen.getRenderHeight()), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // --- サーバー全体の最大上限設定 (OP専用) ---
+    private static int setServerMaxFps(CommandSourceStack source, int fps) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            config.maxFps = Math.max(1, Math.min(60, fps));
+            ServerBrowserConfig.save();
+
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_fps_set", config.maxFps), true);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setServerMaxQuality(CommandSourceStack source, int quality) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            config.maxQuality = Math.max(10, Math.min(100, quality));
+            ServerBrowserConfig.save();
+
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_quality_set", config.maxQuality), true);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setServerMaxScale(CommandSourceStack source, double rawScale) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            double scale = Math.round(rawScale * 100.0) / 100.0;
+            ServerBrowserConfig config = ServerBrowserConfig.get();
+            config.maxScale = Math.max(0.5, Math.min(4.0, scale));
+            ServerBrowserConfig.save();
+
+            source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_scale_set", String.format("%.2f", config.maxScale)), true);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));
