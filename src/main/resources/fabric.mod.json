@@ -5,7 +5,7 @@
 	"name": "Server Browser",
 	"description": "Pure server-side Minecraft mod that displays web browsers and Google search in-game on item frame screens.",
 	"authors": [
-		"Antigravity"
+		"zenk"
 	],
 	"license": "MIT",
 	"icon": "assets/serverbrowser/icon.png",
