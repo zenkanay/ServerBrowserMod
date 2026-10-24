@@ -252,7 +252,6 @@ public class ScreenInstance {
         dirtyTileIndices.clear();
         for (int i = 0; i < widthTiles * heightTiles; i++) {
             lastTileColors.put(i, blankBytes.clone());
-            dirtyTileIndices.add(i);
         }
 
         for (int y = 0; y < heightTiles; y++) {
@@ -510,12 +509,6 @@ public class ScreenInstance {
         }
         if (!hasNearbyPlayer) return;
 
-        // 前フレームの未送信タイルが残っている場合は新フレームをスキップし、
-        // 前フレームが画面最下部まで100%確実に送信完了するのを待機（FPSを自動調整して全画面完全描画を保証）
-        if (!dirtyTileIndices.isEmpty()) {
-            return;
-        }
-
         // フルスクリーン動画等で送られてきた解像度が画面と異なる場合、画面全体（全タイル）にぴったり高品質フィット
         BufferedImage normalizedImage = normalizeImage(fullImage);
         BufferedImage oldImage = this.baseImage;
@@ -532,14 +525,14 @@ public class ScreenInstance {
             }
         }
 
-        // バジェット分を即時フラッシュ
+        // 変化した全タイル（上端から下端まで）を即時フラッシュ
         flushDirtyTiles(server);
     }
 
     /**
      * 未送信・変更タイルのフラッシュ送信
-     * 画面全体が確実に下まで更新されるよう、1回あたり最大 64 タイル（小型・中型画面は一斉送信）送信し、
-     * 残余タイルがある場合は最速（20ms / 1Tick 後）で続きをフラッシュする。
+     * 動画再生時でも画面下部まで100%確実に全画面を描き切るため、
+     * 変化した全タイル（dirtyタイル）をフレーム内で最下部まで一括送信する。
      */
     public void flushDirtyTiles(MinecraftServer server) {
         if (server == null || baseImage == null) return;
@@ -553,11 +546,6 @@ public class ScreenInstance {
             }
         }
         if (!hasNearbyPlayer) return;
-
-        final int totalTiles = widthTiles * heightTiles;
-        // 小型・中型画面（<= 64タイル: 8x8や16x4画面）は1回で下まで全画面一括送信！
-        // 超巨大画面（> 64タイル）は 1フレームあたり最大 64 タイルずつ最速Tickで下まで送り切る
-        final int maxPacketsPerFrame = (totalTiles <= 64) ? totalTiles : 64;
 
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
 
@@ -573,9 +561,10 @@ public class ScreenInstance {
             dirtyTileIndices.remove(pointerTileIdx);
         }
 
-        // 2. dirtyTileIndices からバジェット上限までタイルを取り出してパケット生成
+        // 2. 変化したすべてのタイル（上段から最下段まで）を1回で余すことなくすべてパケット生成！
+        // 途中で打ち切らないため、動画再生時でも画面下部まで100%完全に更新される！
         Iterator<Integer> it = dirtyTileIndices.iterator();
-        while (it.hasNext() && packetsToSend.size() < maxPacketsPerFrame) {
+        while (it.hasNext()) {
             int currentTile = it.next();
             it.remove();
 
@@ -601,23 +590,6 @@ public class ScreenInstance {
                     }
                 }
             });
-        }
-
-        // 4. まだ未送信タイルが残っている場合、画面下部まで確実に描き切るため最速（20ms / 1Tick 後）にスケジュールフラッシュ！
-        if (!dirtyTileIndices.isEmpty()) {
-            scheduleFlush(server);
-        }
-    }
-
-    private void scheduleFlush(MinecraftServer server) {
-        if (isFlushScheduled.compareAndSet(false, true)) {
-            java.util.concurrent.CompletableFuture.delayedExecutor(20, java.util.concurrent.TimeUnit.MILLISECONDS)
-                .execute(() -> {
-                    isFlushScheduled.set(false);
-                    try {
-                        flushDirtyTiles(server);
-                    } catch (Exception ignored) {}
-                });
         }
     }
 
