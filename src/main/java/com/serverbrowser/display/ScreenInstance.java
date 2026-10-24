@@ -81,8 +81,10 @@ public class ScreenInstance {
     private int quality = 75;
     private double scale = 1.0;
 
-    // パケット送信バジェット制御（超大型スクリーン・動画再生時のクライアントフリーズ完全防止）
-    private int roundRobinScanIndex = 0;
+    // 未送信または画像差分のあるタイルインデックスのセット（順序正しく送信するため ConcurrentSkipListSet を採用）
+    private final Set<Integer> dirtyTileIndices = new java.util.concurrent.ConcurrentSkipListSet<>();
+    // 残余タイルを次 Tick/40ms 後に自動フラッシュするための重複スケジュール防止フラグ
+    private final java.util.concurrent.atomic.AtomicBoolean isFlushScheduled = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, int widthTiles, int heightTiles) {
         this(id, level, originWallPos, facing, getDefaultRightDir(facing), getDefaultDownDir(facing), widthTiles, heightTiles, 1000000 + (id * 10000));
@@ -236,8 +238,10 @@ public class ScreenInstance {
         Arrays.fill(blankBytes, blackColor);
 
         lastTileColors.clear();
+        dirtyTileIndices.clear();
         for (int i = 0; i < widthTiles * heightTiles; i++) {
             lastTileColors.put(i, blankBytes.clone());
+            dirtyTileIndices.add(i);
         }
 
         for (int y = 0; y < heightTiles; y++) {
@@ -409,6 +413,7 @@ public class ScreenInstance {
         }
 
         lastTileColors.clear();
+        dirtyTileIndices.clear();
         baseImage = null;
     }
 
@@ -477,8 +482,8 @@ public class ScreenInstance {
      * 高速非同期ストリーミング（Screencast / LiveUpdate）用の画面更新
      * 重い画像切り出し・パレット減色・タイル差分・パケット生成をワーカースレッドで 100% 完了させ、
      * Minecraft サーバーのメインスレッド（Tick）を 0.01ms もブロックしない極限最適化アーキテクチャ。
-     * さらに、超大型スクリーン・動画再生時でもクライアントのテクスチャ更新負荷（OpenGL）を安全領域に収める
-     * スマート・パケット・バジェット（Round-Robin）制御を搭載。
+     * バジェット制御によりクライアントのテクスチャ更新（OpenGL）を安全に保ちつつ、
+     * 未送信タイルが残った場合は自動で次Tick/40ms後にフラッシュを継続し、静止画でも全画面を 100% 確実に表示する。
      */
     public void updateDisplayFromAsync(BufferedImage fullImage, MinecraftServer server) {
         if (fullImage == null || server == null) return;
@@ -500,9 +505,42 @@ public class ScreenInstance {
         this.baseImage = normalizedImage;
 
         final int totalTiles = widthTiles * heightTiles;
+
+        // 前フレームとの差分判定（または初期未送信タイル）を検知して dirtyTileIndices に登録
+        for (int i = 0; i < totalTiles; i++) {
+            int tx = i % widthTiles;
+            int ty = i / widthTiles;
+            if (oldImage == null || oldImage == normalizedImage || !lastTileColors.containsKey(i) || isTileDirty(oldImage, normalizedImage, tx, ty)) {
+                dirtyTileIndices.add(i);
+            }
+        }
+
+        // バジェット分を即時フラッシュ
+        flushDirtyTiles(server);
+    }
+
+    /**
+     * 未送信・変更タイルのフラッシュ送信
+     * クライアントの OpenGL 飽和を防ぐため 1回あたり最大 32 タイルずつ送信し、
+     * 残余タイルがある場合は自動で 40ms 後（次Tick）に再実行をスケジュールする。
+     */
+    public void flushDirtyTiles(MinecraftServer server) {
+        if (server == null || baseImage == null) return;
+
+        int checkDist = Math.max(96, Math.max(widthTiles, heightTiles) + 32);
+        boolean hasNearbyPlayer = false;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.level() == this.level && player.blockPosition().closerThan(this.originWallPos, checkDist)) {
+                hasNearbyPlayer = true;
+                break;
+            }
+        }
+        if (!hasNearbyPlayer) return;
+
+        final int totalTiles = widthTiles * heightTiles;
         // バニラクライアントの OpenGL テクスチャ更新キューが飽和しない黄金比バジェット
-        // 小型画面（<= 16タイル）は一斉送信、中型・大型画面（> 16タイル）は 1フレームあたり最大 24 タイル
-        final int maxPacketsPerFrame = (totalTiles <= 16) ? totalTiles : 24;
+        // 小型画面（<= 32タイル）は一斉送信、中型・大型画面（> 32タイル）は 1フレームあたり最大 32 タイル
+        final int maxPacketsPerFrame = (totalTiles <= 32) ? totalTiles : 32;
 
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
 
@@ -515,56 +553,55 @@ public class ScreenInstance {
             if (ptrPacket != null) {
                 packetsToSend.add(ptrPacket);
             }
+            dirtyTileIndices.remove(pointerTileIdx);
         }
 
-        // 2. ラウンドロビン方式で変化したタイル（または初期未送信タイル）をバジェット分だけ収集
-        int scannedCount = 0;
-        int startIndex = roundRobinScanIndex % totalTiles;
-        boolean hasRemainingDirty = false;
+        // 2. dirtyTileIndices からバジェット上限までタイルを取り出してパケット生成
+        Iterator<Integer> it = dirtyTileIndices.iterator();
+        while (it.hasNext() && packetsToSend.size() < maxPacketsPerFrame) {
+            int currentTile = it.next();
+            it.remove();
 
-        while (scannedCount < totalTiles) {
-            int currentTile = (startIndex + scannedCount) % totalTiles;
-            scannedCount++;
-
-            if (currentTile == pointerTileIdx) continue; // ポインタータイルは送信済み
+            if (currentTile == pointerTileIdx) continue;
 
             int tx = currentTile % widthTiles;
             int ty = currentTile / widthTiles;
 
-            boolean unsent = !lastTileColors.containsKey(currentTile);
-            if (!unsent && oldImage != null && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
-                continue;
-            }
-
-            if (packetsToSend.size() < maxPacketsPerFrame) {
-                ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, false);
-                if (packet != null) {
-                    packetsToSend.add(packet);
-                }
-            } else {
-                // 今回のフレームのバジェット上限に達したため、残りは次フレームに持ち越し
-                hasRemainingDirty = true;
-                roundRobinScanIndex = currentTile;
-                break;
+            ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, false);
+            if (packet != null) {
+                packetsToSend.add(packet);
             }
         }
 
-        if (!hasRemainingDirty) {
-            roundRobinScanIndex = (startIndex + scannedCount) % totalTiles;
-        }
-
-        if (packetsToSend.isEmpty()) return;
-
-        // 生成済みパケットをプレイヤーへ送信（メインスレッドでは Netty キューに積むだけ）
-        server.execute(() -> {
-            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                if (player.level() == this.level && player.blockPosition().closerThan(this.originWallPos, checkDist)) {
-                    for (ClientboundMapItemDataPacket packet : packetsToSend) {
-                        player.connection.send(packet);
+        // 3. 生成済みパケットをプレイヤーへ送信（メインスレッドでは Netty キューに積むだけ）
+        if (!packetsToSend.isEmpty()) {
+            server.execute(() -> {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    if (player.level() == this.level && player.blockPosition().closerThan(this.originWallPos, checkDist)) {
+                        for (ClientboundMapItemDataPacket packet : packetsToSend) {
+                            player.connection.send(packet);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+
+        // 4. まだ未送信タイルが残っている場合、静止画でも全タイルが完全に表示されるよう自動で残りをスケジュールフラッシュ！
+        if (!dirtyTileIndices.isEmpty()) {
+            scheduleFlush(server);
+        }
+    }
+
+    private void scheduleFlush(MinecraftServer server) {
+        if (isFlushScheduled.compareAndSet(false, true)) {
+            java.util.concurrent.CompletableFuture.delayedExecutor(40, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .execute(() -> {
+                    isFlushScheduled.set(false);
+                    try {
+                        flushDirtyTiles(server);
+                    } catch (Exception ignored) {}
+                });
+        }
     }
 
     /**

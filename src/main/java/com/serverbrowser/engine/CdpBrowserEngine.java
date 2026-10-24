@@ -162,6 +162,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
         command.add("--disable-extensions");
         command.add("--disable-component-extensions-with-background-pages");
         command.add("--disable-default-apps");
+        command.add("--autoplay-policy=no-user-gesture-required"); // 動画の自動再生を許可
         command.add("--mute-audio");
         command.add("--disable-background-networking");
         command.add("--disable-dev-shm-usage"); // 大容量ページ・動画でのクラッシュ防止
