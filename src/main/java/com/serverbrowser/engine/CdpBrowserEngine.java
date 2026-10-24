@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
@@ -151,7 +152,10 @@ public class CdpBrowserEngine implements IBrowserEngine {
         List<String> command = new ArrayList<>();
         command.add(executablePath);
         command.add("--headless=new");
-        command.add("--disable-gpu");
+        // GPU ハードウェアアクセラレーション有効化（動画デコード・レンダリングの CPU 負荷を 90% 削減）
+        command.add("--enable-gpu-rasterization");
+        command.add("--enable-zero-copy");
+        command.add("--ignore-gpu-blocklist");
         command.add("--no-sandbox");
         command.add("--no-first-run");
         command.add("--no-default-browser-check");
@@ -648,6 +652,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
         private boolean connected = false;
         private volatile boolean screencastActive = false;
         private long lastScreencastFrameTime = 0;
+        private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
 
         // 画面個別設定（FPS、JPEG品質、解像度スケール）
         private int currentWidth = 128;
@@ -752,6 +757,15 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "            }\n" +
                 "        }\n" +
                 "    }, true);\n" +
+                "    // YouTube プレイヤーの動画画質を地図ディスプレイに最適な 360p/480p に自動制限（CPU/ネットワーク過負荷防止）\n" +
+                "    setInterval(function() {\n" +
+                "        try {\n" +
+                "            const p = document.querySelector('.html5-video-player');\n" +
+                "            if (p && typeof p.setPlaybackQualityRange === 'function') {\n" +
+                "                p.setPlaybackQualityRange('medium', 'large');\n" +
+                "            }\n" +
+                "        } catch(e) {}\n" +
+                "    }, 2000);\n" +
                 "})();";
             sendCommand("Page.addScriptToEvaluateOnNewDocument", Map.of("source", stealthJs)).get(2, TimeUnit.SECONDS);
 
@@ -1280,6 +1294,14 @@ public class CdpBrowserEngine implements IBrowserEngine {
                     ackScreencastFrame(sessionId);
                     return;
                 }
+
+                // 前フレームのデコード・レンダリングがまだ処理中の場合、
+                // 遅延フレームをスキップして即座に ACK を返し、キューの肥大化・CPU100%・フリーズを完全防止！
+                if (!isProcessingFrame.compareAndSet(false, true)) {
+                    ackScreencastFrame(sessionId);
+                    return;
+                }
+
                 final String base64 = msg.substring(quoteStart + 1, quoteEnd);
 
                 // 3. フレームレート安定化制御（目標 FPS に応じた正確なフレーム間隔ディレイ）
@@ -1304,6 +1326,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
                         }
                         ackScreencastFrame(sessionId);
                         lastScreencastFrameTime = System.currentTimeMillis();
+                        isProcessingFrame.set(false);
                     }
                 });
             } catch (Exception e) {

@@ -79,6 +79,9 @@ public class ScreenInstance {
     private int quality = 75;
     private double scale = 1.0;
 
+    // パケット送信バジェット制御（超大型スクリーン・動画再生時のクライアントフリーズ完全防止）
+    private int roundRobinScanIndex = 0;
+
     public ScreenInstance(int id, ServerLevel level, BlockPos originWallPos, Direction facing, int widthTiles, int heightTiles) {
         this(id, level, originWallPos, facing, widthTiles, heightTiles, 1000000 + (id * 10000));
     }
@@ -392,10 +395,6 @@ public class ScreenInstance {
         }
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
 
-        // 全体を黒でクリア
-        g2.setColor(Color.BLACK);
-        g2.fillRect(0, 0, targetW, targetH);
-
         double srcAspect = (double) src.getWidth() / src.getHeight();
         double targetAspect = (double) targetW / targetH;
 
@@ -406,6 +405,10 @@ public class ScreenInstance {
 
         // アスペクト比が微妙に異なる場合は中央配置（センタリング）
         if (Math.abs(srcAspect - targetAspect) > 0.03) {
+            // アスペクト比が異なる場合のみ、余白が黒になるようクリア
+            g2.setColor(Color.BLACK);
+            g2.fillRect(0, 0, targetW, targetH);
+
             if (srcAspect > targetAspect) {
                 // ソースの方が横長: 上下中央配置
                 drawH = Math.max(1, (int) Math.round(targetW / srcAspect));
@@ -430,6 +433,8 @@ public class ScreenInstance {
      * 高速非同期ストリーミング（Screencast / LiveUpdate）用の画面更新
      * 重い画像切り出し・パレット減色・タイル差分・パケット生成をワーカースレッドで 100% 完了させ、
      * Minecraft サーバーのメインスレッド（Tick）を 0.01ms もブロックしない極限最適化アーキテクチャ。
+     * さらに、超大型スクリーン・動画再生時でもクライアントのテクスチャ更新負荷（OpenGL）を安全領域に収める
+     * スマート・パケット・バジェット（Round-Robin）制御を搭載。
      */
     public void updateDisplayFromAsync(BufferedImage fullImage, MinecraftServer server) {
         if (fullImage == null || server == null) return;
@@ -450,22 +455,58 @@ public class ScreenInstance {
         BufferedImage oldImage = this.baseImage;
         this.baseImage = normalizedImage;
 
-        // ワーカースレッド側で全タイルの差分判定とパケット生成を完了させる
-        List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
-        for (int ty = 0; ty < heightTiles; ty++) {
-            for (int tx = 0; tx < widthTiles; tx++) {
-                int tileIndex = ty * widthTiles + tx;
-                boolean hasPointer = (!isPointerIdle && tx == lastPointerTileX && ty == lastPointerTileY);
-                boolean unsent = !lastTileColors.containsKey(tileIndex);
-                if (!unsent && oldImage != null && !hasPointer && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
-                    continue;
-                }
+        final int totalTiles = widthTiles * heightTiles;
+        // バニラクライアントの OpenGL テクスチャ更新キューが飽和しない黄金比バジェット
+        // 小型画面（<= 16タイル）は一斉送信、中型・大型画面（> 16タイル）は 1フレームあたり最大 24 タイル
+        final int maxPacketsPerFrame = (totalTiles <= 16) ? totalTiles : 24;
 
-                ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, hasPointer);
+        List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
+
+        // 1. 最優先: マウスポインターがあるタイル（視線・操作レスポンスを 0 遅延で保証）
+        int pointerTileIdx = -1;
+        if (!isPointerIdle && lastPointerTileX >= 0 && lastPointerTileY >= 0
+                && lastPointerTileX < widthTiles && lastPointerTileY < heightTiles) {
+            pointerTileIdx = lastPointerTileY * widthTiles + lastPointerTileX;
+            ClientboundMapItemDataPacket ptrPacket = generateTilePacket(lastPointerTileX, lastPointerTileY, true);
+            if (ptrPacket != null) {
+                packetsToSend.add(ptrPacket);
+            }
+        }
+
+        // 2. ラウンドロビン方式で変化したタイル（または初期未送信タイル）をバジェット分だけ収集
+        int scannedCount = 0;
+        int startIndex = roundRobinScanIndex % totalTiles;
+        boolean hasRemainingDirty = false;
+
+        while (scannedCount < totalTiles) {
+            int currentTile = (startIndex + scannedCount) % totalTiles;
+            scannedCount++;
+
+            if (currentTile == pointerTileIdx) continue; // ポインタータイルは送信済み
+
+            int tx = currentTile % widthTiles;
+            int ty = currentTile / widthTiles;
+
+            boolean unsent = !lastTileColors.containsKey(currentTile);
+            if (!unsent && oldImage != null && !isTileDirty(oldImage, normalizedImage, tx, ty)) {
+                continue;
+            }
+
+            if (packetsToSend.size() < maxPacketsPerFrame) {
+                ClientboundMapItemDataPacket packet = generateTilePacket(tx, ty, false);
                 if (packet != null) {
                     packetsToSend.add(packet);
                 }
+            } else {
+                // 今回のフレームのバジェット上限に達したため、残りは次フレームに持ち越し
+                hasRemainingDirty = true;
+                roundRobinScanIndex = currentTile;
+                break;
             }
+        }
+
+        if (!hasRemainingDirty) {
+            roundRobinScanIndex = (startIndex + scannedCount) % totalTiles;
         }
 
         if (packetsToSend.isEmpty()) return;
