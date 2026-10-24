@@ -27,8 +27,13 @@ public class BrowserCommand {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
             Commands.literal("browser")
-                .executes(ctx -> showHelp(ctx.getSource()))
-                .then(Commands.literal("help").executes(ctx -> showHelp(ctx.getSource())))
+                .executes(ctx -> showHelp(ctx.getSource(), false))
+                .then(Commands.literal("help")
+                    .executes(ctx -> showHelp(ctx.getSource(), false))
+                    .then(Commands.literal("op")
+                        .executes(ctx -> showHelp(ctx.getSource(), true))
+                    )
+                )
                 // 1. 設置: /browser create [横] [縦]
                 .then(Commands.literal("create")
                     .executes(ctx -> createScreen(ctx.getSource(), 3, 2))
@@ -42,29 +47,15 @@ public class BrowserCommand {
                         )
                     )
                 )
-                // 2. 撤去: /browser destroy (手持ちの棒に対応する画面と棒を消去・一般用)
+                // 2. 撤去: /browser destroy (手持ち画面の撤去)
                 .then(Commands.literal("destroy")
                     .executes(ctx -> destroyScreen(ctx.getSource()))
                 )
-                // 3. 付近画面強制撤去: /browser destroy_near (OP専用)
-                .then(Commands.literal("destroy_near")
-                    .executes(ctx -> destroyNearScreen(ctx.getSource()))
-                )
-                // 4. ID指定強制撤去: /browser destroy_id <id> (OP専用)
-                .then(Commands.literal("destroy_id")
-                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .executes(ctx -> destroyScreenById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
-                    )
-                )
-                // 5. 全画面完全リセット: /browser reset (OP専用・clearはresetに統一)
-                .then(Commands.literal("reset")
-                    .executes(ctx -> resetScreens(ctx.getSource()))
-                )
-                // 5-2. ホーム（初期サイトへ戻る）: /browser home
+                // 3. ホーム（初期サイトへ戻る）: /browser home
                 .then(Commands.literal("home")
                     .executes(ctx -> goHome(ctx.getSource()))
                 )
-                // 6. ページ移動・検索: /browser open <URLまたは検索ワード>
+                // 4. ページ移動・検索: /browser open <URLまたは検索ワード>
                 .then(Commands.literal("open")
                     .then(Commands.argument("url", StringArgumentType.greedyString())
                         .executes(ctx -> openUrl(
@@ -73,27 +64,18 @@ public class BrowserCommand {
                         ))
                     )
                 )
-                // 7. Google検索: /browser google <検索ワード>
-                .then(Commands.literal("google")
-                    .then(Commands.argument("query", StringArgumentType.greedyString())
-                        .executes(ctx -> openUrl(
-                            ctx.getSource(),
-                            "https://www.google.co.jp/search?hl=ja&q=" + StringArgumentType.getString(ctx, "query")
-                        ))
-                    )
-                )
-                // 8. ページ再読み込み: /browser reload
+                // 5. ページ再読み込み: /browser reload
                 .then(Commands.literal("reload")
                     .executes(ctx -> doReload(ctx.getSource()))
                 )
-                // 9. 戻る / 進む: /browser back, /browser forward
+                // 6. 戻る / 進む: /browser back, /browser forward
                 .then(Commands.literal("back")
                     .executes(ctx -> doBack(ctx.getSource()))
                 )
                 .then(Commands.literal("forward")
                     .executes(ctx -> doForward(ctx.getSource()))
                 )
-                // 10. 文字入力: /browser type <テキスト>
+                // 7. 文字入力: /browser type <テキスト>
                 .then(Commands.literal("type")
                     .then(Commands.argument("text", StringArgumentType.greedyString())
                         .executes(ctx -> inputType(
@@ -102,90 +84,76 @@ public class BrowserCommand {
                         ))
                     )
                 )
-                // 11. 決定: /browser enter
+                // 8. 決定: /browser enter
                 .then(Commands.literal("enter")
                     .executes(ctx -> pressEnter(ctx.getSource()))
                 )
-                // 12. 削除: /browser backspace [回数], /browser bs [回数]
+                // 9. 削除: /browser backspace [回数]
                 .then(Commands.literal("backspace")
                     .executes(ctx -> pressBackspace(ctx.getSource(), 1))
                     .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
                         .executes(ctx -> pressBackspace(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))
                     )
                 )
-                .then(Commands.literal("bs")
-                    .executes(ctx -> pressBackspace(ctx.getSource(), 1))
-                    .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
-                        .executes(ctx -> pressBackspace(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "count")))
-                    )
-                )
-                // 12. クリック操作: /browser click, /browser rclick, /browser dclick (doubleclickはdclickに統一)
-                .then(Commands.literal("click")
-                    .executes(ctx -> doClick(ctx.getSource()))
-                )
-                .then(Commands.literal("rclick")
-                    .executes(ctx -> doRightClick(ctx.getSource()))
-                )
-                .then(Commands.literal("dclick")
-                    .executes(ctx -> doubleClick(ctx.getSource()))
-                )
-                // 13. ドラッグ操作 (つかむ / 離す): /browser drag
-                .then(Commands.literal("drag")
-                    .executes(ctx -> doToggleDrag(ctx.getSource()))
-                )
-                // 14. スクロール操作: /browser scroll [up|down|<delta>] [amount]
-                .then(Commands.literal("scroll")
-                    .executes(ctx -> doScroll(ctx.getSource(), 0))
-                    .then(Commands.literal("up")
-                        .executes(ctx -> doScroll(ctx.getSource(), -1))
-                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
-                            .executes(ctx -> doScroll(ctx.getSource(), -IntegerArgumentType.getInteger(ctx, "amount")))
-                        )
-                    )
-                    .then(Commands.literal("down")
-                        .executes(ctx -> doScroll(ctx.getSource(), 1))
-                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
-                            .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "amount")))
-                        )
-                    )
-                    .then(Commands.argument("delta", IntegerArgumentType.integer(-2000, 2000))
-                        .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "delta")))
-                    )
-                )
-                // 14. リモコン棒取得: /browser wand (最寄り), /browser wand_id <id> (OP専用)
+                // 10. リモコン棒再取得: /browser wand
                 .then(Commands.literal("wand")
                     .executes(ctx -> getWand(ctx.getSource()))
                 )
-                .then(Commands.literal("wand_id")
-                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .executes(ctx -> getWandById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
-                    )
-                )
-                // 15. 一覧: /browser list
+                // 11. 一覧: /browser list
                 .then(Commands.literal("list")
                     .executes(ctx -> listScreens(ctx.getSource()))
                 )
-                // 15-2. 画面プロパティ詳細表示: /browser info, /browser status, /browser prop (手持ち画面用), /browser info_id <id> (OP専用)
+                // 12. 画面プロパティ詳細表示: /browser info
                 .then(Commands.literal("info")
                     .executes(ctx -> showScreenInfo(ctx.getSource()))
                 )
-                .then(Commands.literal("status")
-                    .executes(ctx -> showScreenInfo(ctx.getSource()))
-                )
-                .then(Commands.literal("prop")
-                    .executes(ctx -> showScreenInfo(ctx.getSource()))
-                )
-                .then(Commands.literal("info_id")
-                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .executes(ctx -> showScreenInfoById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
-                    )
-                )
-                // 16. FPS 設定: /browser fps <値> (手持ち画面用), /browser fps_id <id> <値> (OP専用)
+                // 13. FPS 設定: /browser fps <値>
                 .then(Commands.literal("fps")
                     .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
                         .executes(ctx -> setScreenFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
                     )
                 )
+                // 14. 解像度スケール設定: /browser res <倍率>
+                .then(Commands.literal("res")
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
+                        .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
+                    )
+                )
+                // 15. JPEG 画質設定: /browser quality <値>
+                .then(Commands.literal("quality")
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
+                    )
+                )
+
+                // ==== OP専用コマンド ====
+                // 16. 付近画面強制撤去: /browser destroy_near (OP専用)
+                .then(Commands.literal("destroy_near")
+                    .executes(ctx -> destroyNearScreen(ctx.getSource()))
+                )
+                // 17. ID指定強制撤去: /browser destroy_id <id> (OP専用)
+                .then(Commands.literal("destroy_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> destroyScreenById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
+                // 18. 全画面完全リセット: /browser reset (OP専用)
+                .then(Commands.literal("reset")
+                    .executes(ctx -> resetScreens(ctx.getSource()))
+                )
+                // 19. ID指定リモコン棒取得: /browser wand_id <id> (OP専用)
+                .then(Commands.literal("wand_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> getWandById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
+                // 20. ID指定詳細表示: /browser info_id <id> (OP専用)
+                .then(Commands.literal("info_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .executes(ctx -> showScreenInfoById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id")))
+                    )
+                )
+                // 21. ID指定FPS変更: /browser fps_id <id> <fps> (OP専用)
                 .then(Commands.literal("fps_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
                         .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
@@ -193,35 +161,7 @@ public class BrowserCommand {
                         )
                     )
                 )
-                // 17. JPEG 画質設定: /browser quality <値>, /browser qual <値>, /browser quality_id <id> <値>
-                .then(Commands.literal("quality")
-                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
-                        .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
-                    )
-                )
-                .then(Commands.literal("qual")
-                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
-                        .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
-                    )
-                )
-                .then(Commands.literal("quality_id")
-                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
-                            .executes(ctx -> setScreenQualityById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "quality")))
-                        )
-                    )
-                )
-                // 18. 解像度スケール設定: /browser res <倍率>, /browser resolution <倍率>, /browser res_id <id> <倍率>
-                .then(Commands.literal("res")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
-                        .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
-                    )
-                )
-                .then(Commands.literal("resolution")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
-                        .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
-                    )
-                )
+                // 22. ID指定解像度変更: /browser res_id <id> <scale> (OP専用)
                 .then(Commands.literal("res_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
                         .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
@@ -229,15 +169,18 @@ public class BrowserCommand {
                         )
                     )
                 )
-                // 19. OP専用: サーバー全体の最大上限設定
+                // 23. ID指定品質変更: /browser quality_id <id> <quality> (OP専用)
+                .then(Commands.literal("quality_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                            .executes(ctx -> setScreenQualityById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "quality")))
+                        )
+                    )
+                )
+                // 24. サーバー上限設定: /browser max_fps, max_res, max_quality (OP専用)
                 .then(Commands.literal("max_fps")
                     .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
                         .executes(ctx -> setServerMaxFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
-                    )
-                )
-                .then(Commands.literal("max_quality")
-                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
-                        .executes(ctx -> setServerMaxQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
                     )
                 )
                 .then(Commands.literal("max_res")
@@ -245,47 +188,53 @@ public class BrowserCommand {
                         .executes(ctx -> setServerMaxScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
+                .then(Commands.literal("max_quality")
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .executes(ctx -> setServerMaxQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
+                    )
+                )
         );
     }
 
-    private static int showHelp(CommandSourceStack source) {
+    private static int showHelp(CommandSourceStack source, boolean showOp) {
+        ServerPlayer player = source.getPlayer();
+        boolean isOp = isOperator(source, player);
+
+        if (showOp) {
+            if (!isOp) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.op_title"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_near"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.reset"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.info_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.res_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_fps"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_res"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_quality"), false);
+            return 1;
+        }
+
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.title"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.create"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.home"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.open"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.google"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.reload"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.history"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.type"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.backspace"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.enter"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.doubleclick"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.drag"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.scroll"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.navigation"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.input"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.settings"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.info"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.res"), false);
-        source.sendSuccess(() -> Component.literal("§c【管理者用コマンド (要OP)】"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_near"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.destroy_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.info_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.res_id"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_fps"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_quality"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_res"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.reset"), false);
-        source.sendSuccess(() -> Component.literal("§7--------------------------------"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_title"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_right"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_left"), false);
-        source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_shift_right"), false);
+        if (isOp) {
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.op_hint"), false);
+        }
         return 1;
     }
 
@@ -460,39 +409,6 @@ public class BrowserCommand {
         }
     }
 
-    private static int doClick(CommandSourceStack source) {
-        try {
-            ServerPlayer player = source.getPlayerOrException();
-            DisplayManager.getInstance().handleClick(player, source.getServer());
-            return 1;
-        } catch (Exception e) {
-            source.sendFailure(Component.literal("Error: " + e.getMessage()));
-            return 0;
-        }
-    }
-
-    private static int doRightClick(CommandSourceStack source) {
-        try {
-            ServerPlayer player = source.getPlayerOrException();
-            DisplayManager.getInstance().handleRightClick(player, source.getServer());
-            return 1;
-        } catch (Exception e) {
-            source.sendFailure(Component.literal("Error: " + e.getMessage()));
-            return 0;
-        }
-    }
-
-    private static int doScroll(CommandSourceStack source, int delta) {
-        try {
-            ServerPlayer player = source.getPlayerOrException();
-            DisplayManager.getInstance().scrollByCommand(player, delta, source.getServer());
-            return 1;
-        } catch (Exception e) {
-            source.sendFailure(Component.literal("Error: " + e.getMessage()));
-            return 0;
-        }
-    }
-
     private static int doBack(CommandSourceStack source) {
         try {
             ServerPlayer player = source.getPlayerOrException();
@@ -519,17 +435,6 @@ public class BrowserCommand {
         try {
             ServerPlayer player = source.getPlayerOrException();
             DisplayManager.getInstance().handleReload(player, source.getServer());
-            return 1;
-        } catch (Exception e) {
-            source.sendFailure(Component.literal("Error: " + e.getMessage()));
-            return 0;
-        }
-    }
-
-    private static int doubleClick(CommandSourceStack source) {
-        try {
-            ServerPlayer player = source.getPlayerOrException();
-            DisplayManager.getInstance().handleDoubleClick(player, source.getServer());
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));
@@ -658,17 +563,6 @@ public class BrowserCommand {
             }
             boolean success = DisplayManager.getInstance().reacquireWand(player, id);
             return success ? 1 : 0;
-        } catch (Exception e) {
-            source.sendFailure(Component.literal("Error: " + e.getMessage()));
-            return 0;
-        }
-    }
-
-    private static int doToggleDrag(CommandSourceStack source) {
-        try {
-            ServerPlayer player = source.getPlayerOrException();
-            DisplayManager.getInstance().toggleDrag(player, source.getServer());
-            return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));
             return 0;

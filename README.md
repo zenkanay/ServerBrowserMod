@@ -57,41 +57,39 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 
 | Command | Description |
 | :--- | :--- |
+| `/browser help` | Show concise user guide (`/browser help op` for admin commands) |
 | `/browser create [width] [height]` | Spawn a display and receive its Remote Wand |
 | `/browser destroy` | Destroy the display and wand held in hand |
-| `/browser open <url or query>` | Navigate to a URL or search query |
+| `/browser open <url or query>` | Navigate to a URL or search on Google |
 | `/browser home` | Navigate to default home page |
-| `/browser google <query>` | Shortcut for Google Search |
 | `/browser reload` | Reload the current page |
 | `/browser back` / `/browser forward` | Navigate history back / forward |
 | `/browser type <text>` | Type text into the active input element |
-| `/browser backspace [count]` | Send Backspace (alias: `/browser bs`) |
+| `/browser backspace [count]` | Send Backspace |
 | `/browser enter` | Send Enter key |
-| `/browser drag` | Toggle mouse drag mode |
-| `/browser click` / `rclick` / `dclick` | Trigger mouse click via command |
-| `/browser scroll [up\|down\|amount]` | Scroll page via command |
 | `/browser wand` | Reacquire wand for nearest display within 10 blocks |
-| `/browser list` | List active displays and current properties |
-| `/browser info` | View detailed properties of held display (alias: `/browser status`) |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
-| `/browser quality <quality>` | Set JPEG quality for held display (10 to 100, alias: `/browser qual`) |
-| `/browser res <scale>` | Set resolution scale for held display (alias: `/browser resolution`) |
+| `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 2.0) |
+| `/browser quality <quality>` | Set JPEG quality for held display (10 to 100) |
+| `/browser list` | List active displays and current properties |
+| `/browser info` | View detailed properties of held display |
 
 ### Operator Commands (OP Required)
 
 | Command | Description |
 | :--- | :--- |
+| `/browser help op` | Show admin commands help |
 | `/browser destroy_near` | Remove nearest display without holding wand |
 | `/browser destroy_id <id>` | Remove specific display by ID |
+| `/browser reset` | Delete all displays and reset screen ID counter |
 | `/browser wand_id <id>` | Obtain Remote Wand for specific display by ID |
 | `/browser info_id <id>` | View detailed properties of display by ID |
 | `/browser fps_id <id> <fps>` | Set frame rate for display by ID |
-| `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
 | `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
+| `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
 | `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 60) |
-| `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (10 to 100) |
 | `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.01+) |
-| `/browser reset` | Delete all displays and reset screen ID counter |
+| `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (10 to 100) |
 
 ---
 
