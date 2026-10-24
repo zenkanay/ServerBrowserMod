@@ -69,11 +69,7 @@ public class BuiltinSearchEngine implements IBrowserEngine {
                               (target.contains(".") && !target.contains(" ") && !target.startsWith("?")));
 
         if (isDirectUrl) {
-            if (target.toLowerCase().contains("youtube.com") || target.toLowerCase().contains("youtu.be")) {
-                renderYouTubeFull(g, target, width, docHeight);
-            } else {
-                renderWebpageFull(g, target, width, docHeight);
-            }
+            renderWebpageFull(g, target, width, docHeight);
         } else {
             renderGoogleSearchFull(g, target, width, docHeight);
         }
@@ -157,92 +153,6 @@ public class BuiltinSearchEngine implements IBrowserEngine {
             g.drawString(displaySnippet, paddingLeft, currentY + 36);
 
             currentY += 75;
-        }
-    }
-
-    private void renderYouTubeFull(Graphics2D g, String rawUrl, int width, int docHeight) {
-        g.setColor(new Color(15, 15, 15));
-        g.fillRect(0, 0, width, docHeight);
-
-        int headerHeight = 56;
-        g.setColor(new Color(33, 33, 33));
-        g.fillRect(0, 0, width, headerHeight);
-        g.setColor(new Color(48, 48, 48));
-        g.drawLine(0, headerHeight, width, headerHeight);
-
-        // YouTube 赤ロゴ
-        g.setColor(new Color(255, 0, 0));
-        g.fillRoundRect(15, 14, 38, 28, 8, 8);
-        g.setColor(Color.WHITE);
-        int[] triX = { 30, 30, 42 };
-        int[] triY = { 21, 35, 28 };
-        g.fillPolygon(triX, triY, 3);
-
-        g.setFont(new Font("SansSerif", Font.BOLD, 20));
-        g.drawString("YouTube", 60, 35);
-
-        // 検索バー
-        int sbX = Math.max(170, width / 4);
-        int sbW = Math.max(120, width / 2);
-        g.setColor(new Color(18, 18, 18));
-        g.fillRoundRect(sbX, 12, sbW, 32, 16, 16);
-        g.setColor(new Color(60, 60, 60));
-        g.drawRoundRect(sbX, 12, sbW, 32, 16, 16);
-
-        g.setColor(new Color(170, 170, 170));
-        g.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        g.drawString("🔍  YouTube 検索", sbX + 15, 33);
-
-        int cardY = headerHeight + 30;
-        int padding = 25;
-        int cardW = Math.max(160, (width - (padding * 3)) / 2);
-        int cardH = 140;
-
-        String[][] dummyVideos = {
-            {"Minecraft 1.21.11 最新アップデート完全解説！", "マイクラ公式チャンネル", "125万回視聴 • 2日前"},
-            {"【神MOD】ゲーム内でGoogleが動くMODを作ってみた", "クラフト研究室", "84万回視聴 • 5日前"},
-            {"マインクラフト サバイバル実況 Part 100 記念配信", "ゲーム実況者A", "52万回視聴 • 1週間前"},
-            {"最新建築テクニック20選！美しい街作りの基本", "建築ギルド", "31万回視聴 • 3週間前"},
-            {"超簡単！全自動アイアンゴーレムトラップの作り方", "装置マスター", "98万回視聴 • 1か月前"},
-            {"マイクラBGMメドレー 作業用・勉強用 2時間耐久", "Music Craft", "310万回視聴 • 6か月前"}
-        };
-
-        for (int i = 0; i < dummyVideos.length; i++) {
-            int col = i % 2;
-            int row = i / 2;
-            int cx = padding + col * (cardW + padding);
-            int cy = cardY + row * (cardH + 20);
-
-            if (cy + cardH < docHeight) {
-                // サムネイル枠 (グラデーションの美しい枠)
-                g.setColor(new Color(35, 45, 60));
-                g.fillRoundRect(cx, cy, cardW, 85, 8, 8);
-
-                // 再生マーク
-                g.setColor(new Color(255, 0, 0, 220));
-                g.fillRoundRect(cx + cardW / 2 - 16, cy + 28, 32, 24, 6, 6);
-                g.setColor(Color.WHITE);
-                int[] pX = { cx + cardW / 2 - 4, cx + cardW / 2 - 4, cx + cardW / 2 + 6 };
-                int[] pY = { cy + 33, cy + 47, cy + 40 };
-                g.fillPolygon(pX, pY, 3);
-
-                // タイトル
-                g.setColor(Color.WHITE);
-                g.setFont(new Font("SansSerif", Font.BOLD, 11));
-                String vTitle = dummyVideos[i][0];
-                if (vTitle.length() > 22) vTitle = vTitle.substring(0, 22) + "...";
-                g.drawString(vTitle, cx, cy + 102);
-
-                // チャンネル名
-                g.setColor(new Color(170, 170, 170));
-                g.setFont(new Font("SansSerif", Font.PLAIN, 10));
-                g.drawString(dummyVideos[i][1], cx, cy + 117);
-
-                // 視聴回数
-                g.setColor(new Color(130, 130, 130));
-                g.setFont(new Font("SansSerif", Font.PLAIN, 9));
-                g.drawString(dummyVideos[i][2], cx, cy + 130);
-            }
         }
     }
 
@@ -405,7 +315,6 @@ public class BuiltinSearchEngine implements IBrowserEngine {
             list.add(new SearchResult(query + " - Wikipedia 百科事典", "https://ja.wikipedia.org/wiki/" + query, "「" + query + "」についての詳細な百科事典記事。概要、歴史、関連トピックを閲覧できます。"));
             list.add(new SearchResult(query + " - 最新ニュース・トピック", "https://news.google.com/search?q=" + query, "Google ニュースで配信されている「" + query + "」に関する速報・最新ニュース一覧。"));
             list.add(new SearchResult(query + " 公式サイト", "https://www.google.com/search?q=" + query, query + " の公式Webサイトおよびオフィシャルリファレンスページ。"));
-            list.add(new SearchResult(query + " - YouTube 動画検索", "https://www.youtube.com/results?search_query=" + query, query + " に関する動画コンテンツ、解説、ゲーム実況動画を視聴。"));
         }
 
         return list;

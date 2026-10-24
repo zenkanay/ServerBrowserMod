@@ -699,7 +699,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
             sendCommand("Page.enable", Map.of()).get(3, TimeUnit.SECONDS);
 
-            // ステルススクリプト注入（reCAPTCHA / Cloudflare ボット検出完全無効化 ＆ YouTube等の全画面・オートハイド完全最適化ポリフィル）
+            // ステルススクリプト注入（reCAPTCHA / Cloudflare ボット検出完全無効化 ＆ 汎用全画面 API エミュレーション）
             String stealthJs = "Object.defineProperty(navigator, 'webdriver', { get: () => false });\n" +
                 "window.chrome = { runtime: {}, app: {}, csi: () => {}, loadTimes: () => {} };\n" +
                 "Object.defineProperty(navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });\n" +
@@ -709,10 +709,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "    const fsStyle = document.createElement('style');\n" +
                 "    fsStyle.id = '__sb_fs__';\n" +
                 "    fsStyle.textContent = '.__sb_fullscreen__ { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important; z-index: 2147483647 !important; margin: 0 !important; padding: 0 !important; background: #000 !important; } ' +\n" +
-                "        '.__sb_fullscreen__ video { position: absolute !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important; object-fit: contain !important; } ' +\n" +
-                "        '.ytp-fullscreen-quick-actions, .ytp-fullscreen-overlay, .ytp-fullerscreen-actions, .ytp-share-panel, .ytp-cards-teaser, .ytp-paid-content-overlay, .ytp-suggested-action, .ytp-ce-element, .ytp-contextmenu { display: none !important; } ' +\n" +
-                "        '.__sb_fullscreen__ .ytp-chrome-bottom { width: calc(100vw - 24px) !important; left: 12px !important; } ' +\n" +
-                "        '.ytp-autohide .ytp-gradient-top, .ytp-autohide .ytp-gradient-bottom, .ytp-autohide .ytp-chrome-top, .ytp-autohide .ytp-chrome-bottom { opacity: 0 !important; pointer-events: none !important; transition: opacity 0.3s ease !important; }';\n" +
+                "        '.__sb_fullscreen__ video { position: absolute !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important; object-fit: contain !important; }';\n" +
                 "    function ensureStyle() { if (!document.getElementById('__sb_fs__') && document.head) document.head.appendChild(fsStyle); }\n" +
                 "    const notifyFs = function() {\n" +
                 "        document.dispatchEvent(new Event('fullscreenchange', { bubbles: true }));\n" +
@@ -723,10 +720,6 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "    const exitFs = function() {\n" +
                 "        if (currentFsElem) {\n" +
                 "            currentFsElem.classList.remove('__sb_fullscreen__');\n" +
-                "            if (currentFsElem.classList.contains('html5-video-player')) {\n" +
-                "                currentFsElem.classList.remove('ytp-fullscreen');\n" +
-                "                currentFsElem.classList.remove('ytp-big-mode');\n" +
-                "            }\n" +
                 "            currentFsElem = null;\n" +
                 "            notifyFs();\n" +
                 "        }\n" +
@@ -737,10 +730,6 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "        if (currentFsElem) currentFsElem.classList.remove('__sb_fullscreen__');\n" +
                 "        currentFsElem = this;\n" +
                 "        this.classList.add('__sb_fullscreen__');\n" +
-                "        if (this.classList.contains('html5-video-player')) {\n" +
-                "            this.classList.add('ytp-fullscreen');\n" +
-                "            this.classList.add('ytp-big-mode');\n" +
-                "        }\n" +
                 "        notifyFs();\n" +
                 "        return Promise.resolve();\n" +
                 "    };\n" +
@@ -754,29 +743,6 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "        Object.defineProperty(document, 'webkitFullscreenEnabled', { get: () => true, configurable: true });\n" +
                 "    } catch(e) {}\n" +
                 "    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && currentFsElem) exitFs(); }, true);\n" +
-                "    window.addEventListener('mousemove', (e) => {\n" +
-                "        if (e.clientX < 0 || e.clientY < 0) {\n" +
-                "            const player = document.querySelector('.html5-video-player');\n" +
-                "            if (player) {\n" +
-                "                player.classList.add('ytp-autohide');\n" +
-                "                player.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));\n" +
-                "            }\n" +
-                "        } else {\n" +
-                "            const player = document.querySelector('.html5-video-player');\n" +
-                "            if (player && player.classList.contains('ytp-autohide')) {\n" +
-                "                player.classList.remove('ytp-autohide');\n" +
-                "            }\n" +
-                "        }\n" +
-                "    }, true);\n" +
-                "    // YouTube プレイヤーの動画画質を地図ディスプレイに最適な 360p/480p に自動制限（CPU/ネットワーク過負荷防止）\n" +
-                "    setInterval(function() {\n" +
-                "        try {\n" +
-                "            const p = document.querySelector('.html5-video-player');\n" +
-                "            if (p && typeof p.setPlaybackQualityRange === 'function') {\n" +
-                "                p.setPlaybackQualityRange('medium', 'large');\n" +
-                "            }\n" +
-                "        } catch(e) {}\n" +
-                "    }, 2000);\n" +
                 "})();";
             sendCommand("Page.addScriptToEvaluateOnNewDocument", Map.of("source", stealthJs)).get(2, TimeUnit.SECONDS);
 
