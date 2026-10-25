@@ -17,6 +17,7 @@
   "serverbrowser.msg.hold_wand_to_destroy": "§c[ServerBrowser] 撤去したいディスプレイに対応するリモコン棒を手にしてから実行してください。",
   "serverbrowser.msg.no_screen_within_range": "§c[ServerBrowser] 付近%sブロック以内にディスプレイが見つかりません。画面に近づいて実行してください。",
   "serverbrowser.msg.navigating": "§e[ServerBrowser] (画面 #%s) ページを開いています: §f%s",
+  "serverbrowser.msg.searching": "§e[ServerBrowser] (画面 #%s) Google検索を実行中: §f%s",
   "serverbrowser.msg.loaded": "§a[ServerBrowser] (画面 #%s) ページの表示が完了しました！",
   "serverbrowser.msg.load_failed": "§c[ServerBrowser] ページの読み込みに失敗しました。URLを確認してください。",
   "serverbrowser.msg.blocked_domain": "§c[ServerBrowser] このドメインへのアクセスはサーバー設定によりブロックされています。",

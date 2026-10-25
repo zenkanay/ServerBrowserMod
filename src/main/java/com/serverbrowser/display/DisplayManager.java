@@ -846,20 +846,28 @@ public class DisplayManager {
     }
 
     public void navigateScreen(ScreenInstance screen, String target, ServerPlayer player, MinecraftServer server) {
-        if (screen == null) return;
+        if (screen == null || target == null) return;
+
+        String trimmed = target.trim();
+        boolean isSearch = !CdpBrowserEngine.isUrl(trimmed);
+        String resolvedUrl = CdpBrowserEngine.formatUrl(trimmed);
 
         // サーバー管理者設定によるブロックドメイン判定
-        if (com.serverbrowser.config.ServerBrowserConfig.get().isDomainBlocked(target)) {
+        if (com.serverbrowser.config.ServerBrowserConfig.get().isDomainBlocked(resolvedUrl)) {
             if (player != null) player.sendSystemMessage(Component.translatable("serverbrowser.msg.blocked_domain"));
             return;
         }
 
-        screen.setCurrentTarget(target);
+        screen.setCurrentTarget(resolvedUrl);
         screen.setScrollY(0);
         screen.setSearchBarSelected(false);
 
         if (player != null) {
-            player.sendSystemMessage(Component.translatable("serverbrowser.msg.navigating", screen.getId(), target));
+            if (isSearch) {
+                player.sendSystemMessage(Component.translatable("serverbrowser.msg.searching", screen.getId(), trimmed));
+            } else {
+                player.sendSystemMessage(Component.translatable("serverbrowser.msg.navigating", screen.getId(), resolvedUrl));
+            }
         }
 
         int screenId = screen.getId();
@@ -868,17 +876,17 @@ public class DisplayManager {
             try {
                 if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
                     // スクリーン専用の独立した Chrome タブでレンダリング（個別プロパティ fps, quality, scale を完全適用）
-                    image = cdpEngine.renderPageForScreen(screenId, target,
+                    image = cdpEngine.renderPageForScreen(screenId, resolvedUrl,
                         screen.getPixelWidth(), screen.getPixelHeight(),
                         screen.getQuality(), screen.getFps(), screen.getScale(),
                         screen.getScrollY());
                 } else {
-                    image = builtinEngine.renderPage(target, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
+                    image = builtinEngine.renderPage(resolvedUrl, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
                 }
             } catch (Exception e) {
                 LOGGER.warn("Render failed on screen #{}, falling back to builtin: {}", screenId, e.getMessage());
                 try {
-                    image = builtinEngine.renderPage(target, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
+                    image = builtinEngine.renderPage(resolvedUrl, screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
                 } catch (Exception ex) {
                     LOGGER.error("Both engines failed: {}", ex.getMessage(), ex);
                 }

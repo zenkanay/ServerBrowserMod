@@ -53,6 +53,8 @@ public class CdpBrowserEngine implements IBrowserEngine {
 
     // スクリーンIDごとの独立したタブセッション（干渉ゼロ化）
     private final Map<Integer, TabSession> screenTabs = new ConcurrentHashMap<>();
+    // 新しく開かれた子タブと親スクリーンIDの追跡用（子タブの targetId -> 親 screenId）
+    private final Map<String, Integer> pendingNewTabOpeners = new ConcurrentHashMap<>();
     private final ExecutorService screencastExecutor = Executors.newFixedThreadPool(4);
     private BiConsumer<Integer, BufferedImage> globalFrameConsumer;
 
@@ -264,6 +266,9 @@ public class CdpBrowserEngine implements IBrowserEngine {
                             CompletableFuture<String> f = browserPendingResponses.remove(id);
                             if (f != null) f.complete(full);
                         }
+                        if (full.contains("\"method\":")) {
+                            handleBrowserControlEvent(full);
+                        }
                     }
                     ws.request(1);
                     return null;
@@ -282,6 +287,100 @@ public class CdpBrowserEngine implements IBrowserEngine {
             }).get(5, TimeUnit.SECONDS);
 
         LOGGER.info("Connected to Chromium Browser Control WebSocket: {}", browserWsUrl);
+
+        // 新しいタブ/ウィンドウ生成を全自動傍受するための Target ディスカバリーを即時有効化
+        sendBrowserCommand("Target.setDiscoverTargets", Map.of("discover", true));
+    }
+
+    private void handleBrowserControlEvent(String json) {
+        try {
+            if (json.contains("\"Target.targetCreated\"") || json.contains("\"Target.targetInfoChanged\"")) {
+                handleTargetEvent(json);
+            } else if (json.contains("\"Target.targetDestroyed\"")) {
+                Matcher m = Pattern.compile("\"targetId\":\\s*\"([^\"]+)\"").matcher(json);
+                if (m.find()) {
+                    pendingNewTabOpeners.remove(m.group(1));
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Error handling browser control event: {}", e.getMessage());
+        }
+    }
+
+    private void handleTargetEvent(String json) {
+        Matcher tidMatcher = Pattern.compile("\"targetId\":\\s*\"([^\"]+)\"").matcher(json);
+        if (!tidMatcher.find()) return;
+        String newTargetId = tidMatcher.group(1);
+
+        String type = "";
+        Matcher typeMatcher = Pattern.compile("\"type\":\\s*\"([^\"]+)\"").matcher(json);
+        if (typeMatcher.find()) {
+            type = typeMatcher.group(1);
+        }
+        if (!"page".equalsIgnoreCase(type)) {
+            return;
+        }
+
+        String browserContextId = null;
+        Matcher bcMatcher = Pattern.compile("\"browserContextId\":\\s*\"([^\"]+)\"").matcher(json);
+        if (bcMatcher.find()) {
+            browserContextId = bcMatcher.group(1);
+        }
+
+        String openerId = null;
+        Matcher opMatcher = Pattern.compile("\"openerId\":\\s*\"([^\"]+)\"").matcher(json);
+        if (opMatcher.find()) {
+            openerId = opMatcher.group(1);
+        }
+
+        String url = null;
+        Matcher urlMatcher = Pattern.compile("\"url\":\\s*\"([^\"]+)\"").matcher(json);
+        if (urlMatcher.find()) {
+            url = urlMatcher.group(1).replace("\\/", "/");
+        }
+
+        // 既存のメインセッションそのもののターゲット変更なら除外
+        for (TabSession session : screenTabs.values()) {
+            if (newTargetId.equals(session.getTargetId())) {
+                return;
+            }
+        }
+
+        // 親スクリーンを特定（openerId または browserContextId から正確に判定）
+        Integer parentScreenId = pendingNewTabOpeners.get(newTargetId);
+        if (parentScreenId == null) {
+            for (TabSession session : screenTabs.values()) {
+                if ((openerId != null && openerId.equals(session.getTargetId())) ||
+                    (browserContextId != null && browserContextId.equals(session.getBrowserContextId()))) {
+                    parentScreenId = session.getScreenId();
+                    pendingNewTabOpeners.put(newTargetId, parentScreenId);
+                    break;
+                }
+            }
+        }
+
+        if (parentScreenId != null) {
+            TabSession parentSession = screenTabs.get(parentScreenId);
+            if (parentSession != null && url != null && !url.isEmpty() && !url.equals("about:blank")) {
+                LOGGER.info("[ServerBrowser] Intercepted new tab from screen #{}: url={}, closing new target {}", parentScreenId, url, newTargetId);
+                pendingNewTabOpeners.remove(newTargetId);
+
+                final String targetUrl = url;
+                final int sid = parentScreenId;
+
+                // 新しく開かれた余分なターゲットを閉じる
+                sendBrowserCommand("Target.closeTarget", Map.of("targetId", newTargetId));
+
+                // 親スクリーンのタブ内でその URL に遷移！
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        parentSession.navigateAndCapture(targetUrl, parentSession.getCurrentWidth(), parentSession.getCurrentHeight());
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to navigate parent session for screen #{}: {}", sid, e.getMessage());
+                    }
+                });
+            }
+        }
     }
 
     public synchronized CompletableFuture<String> sendBrowserCommand(String method, Map<String, Object> params) {
@@ -630,9 +729,21 @@ public class CdpBrowserEngine implements IBrowserEngine {
         file.delete();
     }
 
-    private String formatUrl(String input) {
+    public static boolean isUrl(String input) {
+        if (input == null) return false;
         String trimmed = input.trim();
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("about:") || trimmed.startsWith("chrome://")) {
+            return true;
+        }
+        return trimmed.contains(".") && !trimmed.contains(" ") && !trimmed.startsWith("?");
+    }
+
+    public static String formatUrl(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return "https://www.google.com";
+        }
+        String trimmed = input.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("about:") || trimmed.startsWith("chrome://")) {
             return trimmed;
         }
         if (trimmed.contains(".") && !trimmed.contains(" ") && !trimmed.startsWith("?")) {
@@ -695,8 +806,11 @@ public class CdpBrowserEngine implements IBrowserEngine {
             this.scale = Math.max(0.01, scale);
         }
 
+        public int getScreenId() { return screenId; }
         public String getBrowserContextId() { return browserContextId; }
         public String getTargetId() { return targetId; }
+        public int getCurrentWidth() { return currentWidth; }
+        public int getCurrentHeight() { return currentHeight; }
         public boolean isAlive() { return connected && webSocket != null; }
 
         public void connect(int width, int height) throws Exception {
@@ -751,6 +865,85 @@ public class CdpBrowserEngine implements IBrowserEngine {
                 "        Object.defineProperty(document, 'webkitFullscreenEnabled', { get: () => true, configurable: true });\n" +
                 "    } catch(e) {}\n" +
                 "    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && currentFsElem) exitFs(); }, true);\n" +
+                "    // 新しいタブ／ウィンドウでのオープンを現在の画面に強制リダイレクト（リンク不通バグの完全根絶）\n" +
+                "    window.open = function(url, target, features) {\n" +
+                "        if (url && typeof url === 'string') {\n" +
+                "            const trimmed = url.trim();\n" +
+                "            if (trimmed && trimmed !== 'about:blank' && !trimmed.startsWith('javascript:')) {\n" +
+                "                window.location.href = trimmed;\n" +
+                "                return window;\n" +
+                "            }\n" +
+                "        }\n" +
+                "        return window;\n" +
+                "    };\n" +
+                "    function fixTarget(el) {\n" +
+                "        if (!el) return;\n" +
+                "        const t = el.getAttribute('target');\n" +
+                "        if (t && t.toLowerCase() !== '_self') {\n" +
+                "            el.setAttribute('target', '_self');\n" +
+                "        }\n" +
+                "        if (el.target && el.target.toLowerCase() !== '_self') {\n" +
+                "            el.target = '_self';\n" +
+                "        }\n" +
+                "    }\n" +
+                "    document.addEventListener('click', function(e) {\n" +
+                "        let el = e.target;\n" +
+                "        while (el && el !== document) {\n" +
+                "            if (el.tagName === 'A' || el.tagName === 'AREA' || el.tagName === 'FORM') {\n" +
+                "                fixTarget(el);\n" +
+                "                break;\n" +
+                "            }\n" +
+                "            el = el.parentElement;\n" +
+                "        }\n" +
+                "    }, true);\n" +
+                "    document.addEventListener('auxclick', function(e) {\n" +
+                "        let el = e.target;\n" +
+                "        while (el && el !== document) {\n" +
+                "            if (el.tagName === 'A' && el.href) {\n" +
+                "                e.preventDefault();\n" +
+                "                fixTarget(el);\n" +
+                "                window.location.href = el.href;\n" +
+                "                break;\n" +
+                "            }\n" +
+                "            el = el.parentElement;\n" +
+                "        }\n" +
+                "    }, true);\n" +
+                "    document.addEventListener('submit', function(e) {\n" +
+                "        if (e.target && e.target.tagName === 'FORM') {\n" +
+                "            fixTarget(e.target);\n" +
+                "        }\n" +
+                "    }, true);\n" +
+                "    const tabObserver = new MutationObserver(function(mutations) {\n" +
+                "        for (let i = 0; i < mutations.length; i++) {\n" +
+                "            const m = mutations[i];\n" +
+                "            if (m.type === 'attributes' && m.attributeName === 'target') {\n" +
+                "                fixTarget(m.target);\n" +
+                "            } else if (m.type === 'childList') {\n" +
+                "                for (let j = 0; j < m.addedNodes.length; j++) {\n" +
+                "                    const node = m.addedNodes[j];\n" +
+                "                    if (node.nodeType === 1) {\n" +
+                "                        if (node.tagName === 'A' || node.tagName === 'FORM') fixTarget(node);\n" +
+                "                        if (node.querySelectorAll) {\n" +
+                "                            const targets = node.querySelectorAll('a[target], form[target]');\n" +
+                "                            for (let k = 0; k < targets.length; k++) fixTarget(targets[k]);\n" +
+                "                        }\n" +
+                "                    }\n" +
+                "                }\n" +
+                "            }\n" +
+                "        }\n" +
+                "    });\n" +
+                "    function initTabObserver() {\n" +
+                "        if (document.documentElement) {\n" +
+                "            tabObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['target'] });\n" +
+                "            const existing = document.querySelectorAll('a[target], form[target]');\n" +
+                "            for (let i = 0; i < existing.length; i++) fixTarget(existing[i]);\n" +
+                "        }\n" +
+                "    }\n" +
+                "    if (document.readyState === 'loading') {\n" +
+                "        document.addEventListener('DOMContentLoaded', initTabObserver);\n" +
+                "    } else {\n" +
+                "        initTabObserver();\n" +
+                "    }\n" +
                 "})();";
             sendCommand("Page.addScriptToEvaluateOnNewDocument", Map.of("source", stealthJs)).get(2, TimeUnit.SECONDS);
 

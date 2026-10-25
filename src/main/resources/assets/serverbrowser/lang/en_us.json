@@ -16,6 +16,7 @@
   "serverbrowser.msg.hold_wand_to_destroy": "§c[ServerBrowser] Please hold the Remote Wand of the display you want to destroy.",
   "serverbrowser.msg.no_screen_within_range": "§c[ServerBrowser] No display found within %s blocks. Please move closer to the screen.",
   "serverbrowser.msg.navigating": "§e[ServerBrowser] (Display #%s) Opening: §f%s",
+  "serverbrowser.msg.searching": "§e[ServerBrowser] (Display #%s) Searching Google: §f%s",
   "serverbrowser.msg.loaded": "§a[ServerBrowser] (Display #%s) Page loaded successfully!",
   "serverbrowser.msg.load_failed": "§c[ServerBrowser] Failed to load page. Please verify the URL.",
   "serverbrowser.msg.blocked_domain": "§c[ServerBrowser] This domain is blocked by server configuration.",

@@ -1,5 +1,6 @@
 package com.serverbrowser;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.serverbrowser.command.BrowserCommand;
 import com.serverbrowser.display.DisplayManager;
 import com.serverbrowser.display.ScreenInstance;
@@ -12,6 +13,8 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -27,9 +30,18 @@ public class ServerBrowserMod implements ModInitializer {
     public void onInitialize() {
         LOGGER.info("Starting ServerBrowser Mod (Multi-Screen Real Browser with 1:1 Remote Wands)");
 
-        // コマンド登録 (/browser, /google)
+        // コマンド登録 (/browser, /google -> /browser open へ統合)
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             BrowserCommand.register(dispatcher);
+            dispatcher.register(
+                Commands.literal("google")
+                    .then(Commands.argument("query", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            ctx.getSource().sendSuccess(() -> Component.literal("§7[ServerBrowser] ※ /google は /browser open に統合されました。"), false);
+                            return BrowserCommand.openUrl(ctx.getSource(), StringArgumentType.getString(ctx, "query"));
+                        })
+                    )
+            );
         });
 
         // 毎tickの視線ポインタ追従処理（リモコン所持時のみ）
