@@ -76,8 +76,8 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser wand` | Reacquire wand for nearest display within 10 blocks |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
 | `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 2.0) |
-| `/browser cursor <scale>` | Set cursor scale for held display (0.1 to 10.0, links with res) |
-| `/browser quality <quality>` | Set JPEG quality for held display (10 to 100) |
+| `/browser cursor <scale>` | Set cursor scale for held display (0.01 to 100.0, links with res) |
+| `/browser quality <quality>` | Set JPEG quality for held display (1 to 100) |
 | `/browser list` | List active displays and current properties |
 | `/browser info` | View detailed properties of held display |
 
@@ -93,11 +93,11 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser info_id <id>` | View detailed properties of display by ID |
 | `/browser fps_id <id> <fps>` | Set frame rate for display by ID |
 | `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
-| `/browser cursor_id <id> <scale>` | Set cursor scale for display by ID (0.1 to 10.0) |
+| `/browser cursor_id <id> <scale>` | Set cursor scale for display by ID (0.01 to 100.0) |
 | `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
-| `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 60) |
-| `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.01+) |
-| `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (10 to 100) |
+| `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 120) |
+| `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.001+) |
+| `/browser max_quality <quality>` | Set global server maximum JPEG quality limit (1 to 100) |
 
 ---
 
