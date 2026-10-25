@@ -64,15 +64,6 @@ public class BrowserCommand {
                         ))
                     )
                 )
-                // google コマンドは open に完全統合
-                .then(Commands.literal("google")
-                    .then(Commands.argument("query", StringArgumentType.greedyString())
-                        .executes(ctx -> {
-                            ctx.getSource().sendSuccess(() -> Component.literal("§7[ServerBrowser] ※ google コマンドは /browser open に統合されました。"), false);
-                            return openUrl(ctx.getSource(), StringArgumentType.getString(ctx, "query"));
-                        })
-                    )
-                )
                 // 5. ページ再読み込み: /browser reload
                 .then(Commands.literal("reload")
                     .executes(ctx -> doReload(ctx.getSource()))
@@ -424,7 +415,7 @@ public class BrowserCommand {
         }
     }
 
-    public static int openUrl(CommandSourceStack source, String url) {
+    private static int openUrl(CommandSourceStack source, String url) {
         try {
             ServerPlayer player = source.getPlayerOrException();
             DisplayManager.getInstance().navigate(player, url, source.getServer());
