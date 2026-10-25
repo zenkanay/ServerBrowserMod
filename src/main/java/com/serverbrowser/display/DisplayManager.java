@@ -807,11 +807,11 @@ public class DisplayManager {
             screen.setFps(targetFps);
         }
         if (quality != null) {
-            int targetQual = Math.max(10, Math.min(config.maxQuality, quality));
+            int targetQual = Math.max(1, Math.min(config.maxQuality, quality));
             screen.setQuality(targetQual);
         }
         if (scale != null) {
-            double targetScale = Math.max(0.01, Math.min(config.maxScale, scale));
+            double targetScale = Math.max(0.001, Math.min(config.maxScale, scale));
             screen.setScale(targetScale);
             screen.clearTileCache();
             screen.refreshPointerTile(server);
@@ -850,7 +850,7 @@ public class DisplayManager {
      */
     public boolean updateScreenCursor(ScreenInstance screen, double cursorScale, MinecraftServer server) {
         if (screen == null) return false;
-        double targetScale = Math.max(0.1, Math.min(10.0, cursorScale));
+        double targetScale = Math.max(0.01, Math.min(100.0, cursorScale));
         screen.setCursorScale(targetScale);
         screen.refreshPointerTile(server);
         saveScreens(server);

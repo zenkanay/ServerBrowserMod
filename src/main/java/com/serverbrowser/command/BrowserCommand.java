@@ -114,17 +114,17 @@ public class BrowserCommand {
                     .executes(ctx -> doScroll(ctx.getSource(), 0))
                     .then(Commands.literal("up")
                         .executes(ctx -> doScroll(ctx.getSource(), -1))
-                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 10000))
                             .executes(ctx -> doScroll(ctx.getSource(), -IntegerArgumentType.getInteger(ctx, "amount")))
                         )
                     )
                     .then(Commands.literal("down")
                         .executes(ctx -> doScroll(ctx.getSource(), 1))
-                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 2000))
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1, 10000))
                             .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "amount")))
                         )
                     )
-                    .then(Commands.argument("delta", IntegerArgumentType.integer(-2000, 2000))
+                    .then(Commands.argument("delta", IntegerArgumentType.integer(-10000, 10000))
                         .executes(ctx -> doScroll(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "delta")))
                     )
                 )
@@ -142,25 +142,25 @@ public class BrowserCommand {
                 )
                 // 13. FPS 設定: /browser fps <値>
                 .then(Commands.literal("fps")
-                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 120))
                         .executes(ctx -> setScreenFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
                     )
                 )
                 // 14. 解像度スケール設定: /browser res <倍率>
                 .then(Commands.literal("res")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.001))
                         .executes(ctx -> setScreenScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
                 // 15. JPEG 画質設定: /browser quality <値>
                 .then(Commands.literal("quality")
-                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(1, 100))
                         .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
                     )
                 )
                 // 16. カーソル倍率設定: /browser cursor <倍率>
                 .then(Commands.literal("cursor")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.1, 10.0))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01, 100.0))
                         .executes(ctx -> setScreenCursor(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
@@ -195,7 +195,7 @@ public class BrowserCommand {
                 // 21. ID指定FPS変更: /browser fps_id <id> <fps> (OP専用)
                 .then(Commands.literal("fps_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                        .then(Commands.argument("fps", IntegerArgumentType.integer(1, 120))
                             .executes(ctx -> setScreenFpsById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "fps")))
                         )
                     )
@@ -203,7 +203,7 @@ public class BrowserCommand {
                 // 22. ID指定解像度変更: /browser res_id <id> <scale> (OP専用)
                 .then(Commands.literal("res_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.001))
                             .executes(ctx -> setScreenScaleById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), DoubleArgumentType.getDouble(ctx, "scale")))
                         )
                     )
@@ -211,7 +211,7 @@ public class BrowserCommand {
                 // 23. ID指定品質変更: /browser quality_id <id> <quality> (OP専用)
                 .then(Commands.literal("quality_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                        .then(Commands.argument("quality", IntegerArgumentType.integer(1, 100))
                             .executes(ctx -> setScreenQualityById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), IntegerArgumentType.getInteger(ctx, "quality")))
                         )
                     )
@@ -219,24 +219,24 @@ public class BrowserCommand {
                 // 24. ID指定カーソル倍率変更: /browser cursor_id <id> <scale> (OP専用)
                 .then(Commands.literal("cursor_id")
                     .then(Commands.argument("id", IntegerArgumentType.integer(1))
-                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.1, 10.0))
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01, 100.0))
                             .executes(ctx -> setScreenCursorById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), DoubleArgumentType.getDouble(ctx, "scale")))
                         )
                     )
                 )
                 // 24. サーバー上限設定: /browser max_fps, max_res, max_quality (OP専用)
                 .then(Commands.literal("max_fps")
-                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
+                    .then(Commands.argument("fps", IntegerArgumentType.integer(1, 120))
                         .executes(ctx -> setServerMaxFps(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "fps")))
                     )
                 )
                 .then(Commands.literal("max_res")
-                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.01))
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.001))
                         .executes(ctx -> setServerMaxScale(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
                     )
                 )
                 .then(Commands.literal("max_quality")
-                    .then(Commands.argument("quality", IntegerArgumentType.integer(10, 100))
+                    .then(Commands.argument("quality", IntegerArgumentType.integer(1, 100))
                         .executes(ctx -> setServerMaxQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
                     )
                 )
@@ -851,7 +851,7 @@ public class BrowserCommand {
             }
 
             double scale = Math.round(rawScale * 100.0) / 100.0;
-            if (scale < 0.1 || scale > 10.0) {
+            if (scale < 0.01 || scale > 100.0) {
                 source.sendFailure(Component.translatable("serverbrowser.msg.cursor_limit_exceeded", String.format("%.2f", scale)));
                 return 0;
             }
@@ -884,7 +884,7 @@ public class BrowserCommand {
             }
 
             double scale = Math.round(rawScale * 100.0) / 100.0;
-            if (scale < 0.1 || scale > 10.0) {
+            if (scale < 0.01 || scale > 100.0) {
                 source.sendFailure(Component.translatable("serverbrowser.msg.cursor_limit_exceeded", String.format("%.2f", scale)));
                 return 0;
             }
@@ -912,7 +912,7 @@ public class BrowserCommand {
             }
 
             ServerBrowserConfig config = ServerBrowserConfig.get();
-            config.maxFps = Math.max(1, Math.min(60, fps));
+            config.maxFps = Math.max(1, Math.min(120, fps));
             ServerBrowserConfig.save();
 
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_fps_set", config.maxFps), true);
@@ -931,7 +931,7 @@ public class BrowserCommand {
             }
 
             ServerBrowserConfig config = ServerBrowserConfig.get();
-            config.maxQuality = Math.max(10, Math.min(100, quality));
+            config.maxQuality = Math.max(1, Math.min(100, quality));
             ServerBrowserConfig.save();
 
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_quality_set", config.maxQuality), true);
@@ -949,9 +949,9 @@ public class BrowserCommand {
                 return 0;
             }
 
-            double scale = Math.round(rawScale * 100.0) / 100.0;
+            double scale = Math.round(rawScale * 1000.0) / 1000.0;
             ServerBrowserConfig config = ServerBrowserConfig.get();
-            config.maxScale = Math.max(0.01, scale);
+            config.maxScale = Math.max(0.001, scale);
             ServerBrowserConfig.save();
 
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.max_scale_set", String.format("%.2f", config.maxScale)), true);

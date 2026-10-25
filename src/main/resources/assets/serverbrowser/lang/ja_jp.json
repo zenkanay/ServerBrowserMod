@@ -40,7 +40,7 @@
   "serverbrowser.msg.scale_changed": "§a[ServerBrowser] 画面 #%s の解像度スケールを %sx (%sx%s px) に変更しました！",
   "serverbrowser.msg.scale_limit_exceeded": "§c[ServerBrowser] 指定された解像度スケール (%sx) はサーバー上限 (%sx) を超えています。",
   "serverbrowser.msg.cursor_changed": "§a[ServerBrowser] 画面 #%s のカーソル倍率を %sx (実効: %sx) に変更しました！",
-  "serverbrowser.msg.cursor_limit_exceeded": "§c[ServerBrowser] 指定されたカーソル倍率 (%sx) は範囲外です (0.1x〜10.0x)。",
+  "serverbrowser.msg.cursor_limit_exceeded": "§c[ServerBrowser] 指定されたカーソル倍率 (%sx) は範囲外です (0.01x〜100.0x)。",
   "serverbrowser.msg.max_fps_set": "§a[ServerBrowser] サーバー全体の最大FPS上限を %s fps に設定しました！",
   "serverbrowser.msg.max_quality_set": "§a[ServerBrowser] サーバー全体の最大JPEG品質上限を %s%% に設定しました！",
   "serverbrowser.msg.max_scale_set": "§a[ServerBrowser] サーバー全体の最大解像度スケール上限を %sx に設定しました！",
@@ -62,7 +62,7 @@
   "serverbrowser.help.mouse": "§e/browser click | rclick | dclick | drag | scroll §7- コマンドでマウス操作 / スクロール",
   "serverbrowser.help.wand": "§e/browser wand §7- 最寄りの画面のリモコン棒を再取得",
   "serverbrowser.help.settings": "§e/browser fps | res | quality | cursor <値> §7- 画面設定 (FPS / 解像度 / 画質 / カーソル)",
-  "serverbrowser.help.cursor": "§e/browser cursor <倍率> §7- カーソルサイズを変更 (0.1〜10.0)",
+  "serverbrowser.help.cursor": "§e/browser cursor <倍率> §7- カーソルサイズを変更 (0.01〜100.0)",
   "serverbrowser.help.list": "§e/browser list | info §7- 画面一覧 / 手持ち画面の詳細プロパティ",
   "serverbrowser.help.controls_title": "§b【リモコン棒マウス操作 (手持ち時)】",
   "serverbrowser.help.controls_right": "§f・右クリック: クリック (素早く2回でダブルクリック) / Shift: ドラッグ",
@@ -79,7 +79,7 @@
   "serverbrowser.help.res_id": "§c/browser res_id <ID> <倍率> §7- 指定画面の解像度倍率を変更",
   "serverbrowser.help.quality_id": "§c/browser quality_id <ID> <品質> §7- 指定画面のJPEG品質を変更",
   "serverbrowser.help.cursor_id": "§c/browser cursor_id <ID> <倍率> §7- 指定画面のカーソルサイズを変更",
-  "serverbrowser.help.max_fps": "§c/browser max_fps <FPS> §7- サーバー全体の最大FPS上限を設定 (1〜60)",
-  "serverbrowser.help.max_res": "§c/browser max_res <倍率> §7- サーバー全体の最大解像度スケール上限を設定 (0.01〜)",
-  "serverbrowser.help.max_quality": "§c/browser max_quality <品質> §7- サーバー全体の最大JPEG品質上限を設定 (10〜100)"
+  "serverbrowser.help.max_fps": "§c/browser max_fps <FPS> §7- サーバー全体の最大FPS上限を設定 (1〜120)",
+  "serverbrowser.help.max_res": "§c/browser max_res <倍率> §7- サーバー全体の最大解像度スケール上限を設定 (0.001〜)",
+  "serverbrowser.help.max_quality": "§c/browser max_quality <品質> §7- サーバー全体の最大JPEG品質上限を設定 (1〜100)"
 }

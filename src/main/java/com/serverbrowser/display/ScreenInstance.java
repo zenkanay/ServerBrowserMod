@@ -203,15 +203,15 @@ public class ScreenInstance {
     public void setScale(double scale) { this.scale = scale; }
     public double getCursorScale() { return cursorScale; }
     public void setCursorScale(double cursorScale) {
-        this.cursorScale = Math.max(0.1, Math.min(10.0, cursorScale));
+        this.cursorScale = Math.max(0.01, Math.min(100.0, cursorScale));
     }
     public double getEffectiveCursorScale() {
-        // res（scale）の変動によるカーソルの極小化（消滅）や巨大化（画面覆い）を完全防止
-        // res が 0.01〜10.0 に変化しても、resFactor を 0.8〜1.5 の安全領域にクランプ
-        // これにより「res変更したらカーソルが見えなくなる」バグを根絶！
-        // プレイヤー自身が cursor コマンドで指定した cursorScale（0.1〜10.0）を第一優先で反映
-        double resFactor = Math.max(0.8, Math.min(1.5, this.scale));
-        return Math.max(0.3, this.cursorScale * resFactor);
+        // 解像度（scale）が下がると、Webページの要素と同じ比率で画面上のカーソルがでかくなる（反比例: cursorScale / scale）
+        // 解像度（scale）が上がると、画面上のカーソルが小さくなる
+        // ユーザー設定の cursorScale（基本 1.0）と掛け合わせて実効倍率を算出
+        double safeScale = Math.max(0.001, this.scale);
+        double effective = this.cursorScale / safeScale;
+        return Math.max(0.05, Math.min(50.0, effective));
     }
 
     /**
@@ -1069,7 +1069,7 @@ public class ScreenInstance {
         Object oldAntialias = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 
-        double s = Math.max(0.6, effectiveScale);
+        double s = Math.max(0.05, effectiveScale);
 
         // 外側黒枠ポリゴン
         int[] xPoints = new int[9];
@@ -1093,8 +1093,8 @@ public class ScreenInstance {
         g.fillPolygon(xInner, yInner, 9);
 
         // 先端のハイライト点（通常は鮮やかな赤、ドラッグ中はオレンジ）
-        // どんなスケールでも潰れず、かつ大きすぎないよう 2〜4px に収める
-        int dotSize = Math.max(2, Math.min(4, (int) Math.round(2.0 * s)));
+        // スケールに連動して視認性を常に最高に保つ
+        int dotSize = Math.max(2, (int) Math.round(2.0 * s));
         g.setColor(isDragging ? Color.ORANGE : Color.RED);
         g.fillRect(x, y, dotSize, dotSize);
 

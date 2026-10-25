@@ -41,7 +41,7 @@ public class ServerBrowserConfig {
     public int defaultFps = 14;
     public int maxQuality = 100;
     public int defaultQuality = 75;
-    public double maxScale = 10.0;
+    public double maxScale = 50.0;
     public double defaultScale = 1.0;
 
     public static ServerBrowserConfig get() {
@@ -65,7 +65,7 @@ public class ServerBrowserConfig {
                     if (INSTANCE.defaultFps <= 0) INSTANCE.defaultFps = 14;
                     if (INSTANCE.maxQuality <= 0) INSTANCE.maxQuality = 100;
                     if (INSTANCE.defaultQuality <= 0) INSTANCE.defaultQuality = 75;
-                    if (INSTANCE.maxScale < 10.0) INSTANCE.maxScale = 10.0;
+                    if (INSTANCE.maxScale < 50.0) INSTANCE.maxScale = 50.0;
                     if (INSTANCE.defaultScale <= 0) INSTANCE.defaultScale = 1.0;
                     save();
                     LOGGER.info("[ServerBrowser] Configuration loaded and upgraded successfully.");
