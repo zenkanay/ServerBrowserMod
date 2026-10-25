@@ -222,8 +222,8 @@ public class ScreenInstance {
         if (px < 0 || py < 0) return tiles;
 
         double s = getEffectiveCursorScale();
-        int curW = (int) Math.ceil(14.0 * s) + 2;
-        int curH = (int) Math.ceil(18.0 * s) + 2;
+        int curW = (int) Math.ceil(13.0 * s) + 6;
+        int curH = (int) Math.ceil(20.0 * s) + 6;
 
         int minTx = Math.max(0, px / 128);
         int maxTx = Math.min(widthTiles - 1, (px + curW) / 128);
@@ -243,8 +243,8 @@ public class ScreenInstance {
      */
     private boolean tileOverlapsCursor(int tx, int ty, int px, int py, double s) {
         if (px < 0 || py < 0) return false;
-        int curW = (int) Math.ceil(14.0 * s) + 2;
-        int curH = (int) Math.ceil(18.0 * s) + 2;
+        int curW = (int) Math.ceil(13.0 * s) + 6;
+        int curH = (int) Math.ceil(20.0 * s) + 6;
 
         int tileLeft = tx * 128;
         int tileTop = ty * 128;
@@ -1059,44 +1059,32 @@ public class ScreenInstance {
         );
     }
 
-    private static final double[] CURSOR_X_BASE = { 0, 0, 4, 6, 9, 7, 11, 7, 0 };
-    private static final double[] CURSOR_Y_BASE = { 0, 13, 10, 15, 14, 9, 9, 6, 0 };
-    private static final double[] CURSOR_INNER_X_BASE = { 1, 1, 4, 6, 8, 6, 9, 6, 1 };
-    private static final double[] CURSOR_INNER_Y_BASE = { 2, 11, 9, 13, 12, 8, 8, 5, 2 };
+    // 標準的なWindows/Webポインター矢印の完全な幾何学比率 (7頂点)
+    private static final double[] ARROW_X = { 0.0, 0.0, 4.0, 7.0, 10.0, 7.0, 12.0 };
+    private static final double[] ARROW_Y = { 0.0, 16.0, 12.0, 19.0, 18.0, 11.0, 11.0 };
 
     private void drawMouseCursor(Graphics2D g, int x, int y, double effectiveScale) {
-        // カーソル描画時はアンチエイリアスを無効化（くっきり原色パレットに直結させ、減色時のぼやけ・消滅を100%防止）
         Object oldAntialias = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        double s = Math.max(0.05, effectiveScale);
+        double s = Math.max(0.1, effectiveScale);
 
-        // 外側黒枠ポリゴン
-        int[] xPoints = new int[9];
-        int[] yPoints = new int[9];
-        for (int i = 0; i < 9; i++) {
-            xPoints[i] = x + (int) Math.round(CURSOR_X_BASE[i] * s);
-            yPoints[i] = y + (int) Math.round(CURSOR_Y_BASE[i] * s);
+        java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
+        path.moveTo(x + ARROW_X[0] * s, y + ARROW_Y[0] * s);
+        for (int i = 1; i < ARROW_X.length; i++) {
+            path.lineTo(x + ARROW_X[i] * s, y + ARROW_Y[i] * s);
         }
+        path.closePath();
+
+        // 1. 外側の黒枠線（Stroke）を描画（スケールに応じた太さでくっきり視認）
+        float strokeWidth = (float) Math.max(2.0, Math.min(8.0, 2.0 * Math.sqrt(s)));
         g.setColor(Color.BLACK);
-        g.fillPolygon(xPoints, yPoints, 9);
-        g.drawPolygon(xPoints, yPoints, 9);
+        g.setStroke(new java.awt.BasicStroke(strokeWidth, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+        g.draw(path);
 
-        // 内側ポリゴン（通常は白、ドラッグ中はゴールド/黄色）
-        int[] xInner = new int[9];
-        int[] yInner = new int[9];
-        for (int i = 0; i < 9; i++) {
-            xInner[i] = x + (int) Math.round(CURSOR_INNER_X_BASE[i] * s);
-            yInner[i] = y + (int) Math.round(CURSOR_INNER_Y_BASE[i] * s);
-        }
+        // 2. 内側を塗りつぶし（通常は清潔な白、ドラッグ中は鮮やかなゴールド/黄色）
         g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
-        g.fillPolygon(xInner, yInner, 9);
-
-        // 先端のハイライト点（通常は鮮やかな赤、ドラッグ中はオレンジ）
-        // スケールに連動して視認性を常に最高に保つ
-        int dotSize = Math.max(2, (int) Math.round(2.0 * s));
-        g.setColor(isDragging ? Color.ORANGE : Color.RED);
-        g.fillRect(x, y, dotSize, dotSize);
+        g.fill(path);
 
         // レンダリングヒントを元に戻す
         if (oldAntialias != null) {
