@@ -448,7 +448,7 @@ public class ScreenInstance {
         if (src == null) return null;
         int targetW = getPixelWidth();
         int targetH = getPixelHeight();
-        if (src.getWidth() == targetW && src.getHeight() == targetH) {
+        if (src.getWidth() == targetW && src.getHeight() == targetH && src.getType() == BufferedImage.TYPE_INT_RGB) {
             return src;
         }
 
@@ -475,9 +475,9 @@ public class ScreenInstance {
         int drawX = 0;
         int drawY = 0;
 
-        // アスペクト比が微妙に異なる場合は中央配置（センタリング）
-        if (Math.abs(srcAspect - targetAspect) > 0.03) {
-            // アスペクト比が異なる場合のみ、余白が黒になるようクリア
+        // アスペクト比が異なる場合は中央配置（センタリング）
+        if (Math.abs(srcAspect - targetAspect) > 0.01) {
+            // アスペクト比が異なる場合、余白が黒になるよう確実にクリア
             g2.setColor(Color.BLACK);
             g2.fillRect(0, 0, targetW, targetH);
 
@@ -643,10 +643,10 @@ public class ScreenInstance {
             int[] newData = ((java.awt.image.DataBufferInt) newImg.getRaster().getDataBuffer()).getData();
             int oldScan = oldImg.getWidth();
             int newScan = newImg.getWidth();
-            for (int y = 0; y < h; y += 4) {
+            for (int y = 0; y < h; y += 2) {
                 int oldRow = (sy + y) * oldScan + sx;
                 int newRow = (sy + y) * newScan + sx;
-                for (int x = 0; x < w; x += 4) {
+                for (int x = 0; x < w; x += 2) {
                     if (oldData[oldRow + x] != newData[newRow + x]) {
                         return true;
                     }
@@ -656,8 +656,8 @@ public class ScreenInstance {
         }
 
         // フォールバック
-        for (int y = 0; y < h; y += 4) {
-            for (int x = 0; x < w; x += 4) {
+        for (int y = 0; y < h; y += 2) {
+            for (int x = 0; x < w; x += 2) {
                 if (oldImg.getRGB(sx + x, sy + y) != newImg.getRGB(sx + x, sy + y)) {
                     return true;
                 }

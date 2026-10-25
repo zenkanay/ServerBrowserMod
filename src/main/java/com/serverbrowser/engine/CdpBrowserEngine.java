@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -180,7 +181,7 @@ public class CdpBrowserEngine implements IBrowserEngine {
         command.add("--disable-backgrounding-occluded-windows");
         command.add("--disable-renderer-backgrounding");
         command.add("--force-color-profile=srgb");
-        command.add("--window-size=1920,1080");
+        command.add("--window-size=3840,2160");
 
         // 【最強ボット検出回避 (Stealth Mode)】「私はロボットではありません」を完全根絶！
         command.add("--disable-blink-features=AutomationControlled"); // navigator.webdriver = false に偽装
@@ -669,6 +670,8 @@ public class CdpBrowserEngine implements IBrowserEngine {
         private volatile boolean screencastActive = false;
         private volatile long lastScreencastFrameTime = 0;
         private final AtomicBoolean isProcessingFrame = new AtomicBoolean(false);
+        private record PendingFrame(int sessionId, String base64) {}
+        private final AtomicReference<PendingFrame> latestPendingFrame = new AtomicReference<>(null);
 
         // 画面個別設定（FPS、JPEG品質、解像度スケール）
         private int currentWidth = 128;
@@ -1310,46 +1313,67 @@ public class CdpBrowserEngine implements IBrowserEngine {
                     return;
                 }
 
-                // 前フレームのデコード・レンダリングがまだ処理中の場合、
-                // 遅延フレームをスキップして即座に ACK を返し、キューの肥大化・CPU100%・フリーズを完全防止！
-                if (!isProcessingFrame.compareAndSet(false, true)) {
-                    ackScreencastFrame(sessionId);
-                    return;
+                final String base64 = msg.substring(quoteStart + 1, quoteEnd);
+
+                // 【大型ディスプレイ対応 Coalescing 処理】
+                // 前フレームがまだマイクラ側に描画中であっても、到着した最新フレームを上書き保持！
+                // 古い未処理フレームがあった場合のみ即座に ACK して Chrome のバッファを解放
+                PendingFrame previous = latestPendingFrame.getAndSet(new PendingFrame(sessionId, base64));
+                if (previous != null) {
+                    ackScreencastFrame(previous.sessionId());
                 }
 
-                try {
-                    final String base64 = msg.substring(quoteStart + 1, quoteEnd);
-
-                    // 3. フレームレート安定化制御（目標 FPS に応じた正確なフレーム間隔ディレイ）
-                    long targetInterval = Math.max(16, 1000 / Math.max(1, targetFps));
-                    long now = System.currentTimeMillis();
-                    long elapsed = now - lastScreencastFrameTime;
-                    long delay = Math.max(0, targetInterval - elapsed);
-
-                    screencastExecutor.submit(() -> {
-                        try {
-                            byte[] bytes = Base64.getDecoder().decode(base64);
-                            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
-                                BufferedImage img = ImageIO.read(bais);
-                                if (img != null && globalFrameConsumer != null) {
-                                    globalFrameConsumer.accept(screenId, img);
-                                }
-                            }
-                        } catch (Exception ignored) {
-                        } finally {
-                            if (delay > 0) {
-                                try { Thread.sleep(delay); } catch (InterruptedException ignored) {}
-                            }
-                            ackScreencastFrame(sessionId);
-                            isProcessingFrame.set(false);
-                        }
-                    });
-                } catch (Throwable t) {
-                    isProcessingFrame.set(false);
-                    ackScreencastFrame(sessionId);
-                }
+                // ワーカースレッドが現在待機中であれば直ちに処理ループを起動
+                tryStartFrameProcessing();
             } catch (Exception e) {
                 LOGGER.warn("Error processing screencastFrame for screen #{}: {}", screenId, e.getMessage());
+            }
+        }
+
+        private void tryStartFrameProcessing() {
+            if (isProcessingFrame.compareAndSet(false, true)) {
+                screencastExecutor.submit(this::processPendingFramesLoop);
+            }
+        }
+
+        private void processPendingFramesLoop() {
+            try {
+                while (connected && screencastActive) {
+                    PendingFrame frame = latestPendingFrame.getAndSet(null);
+                    if (frame == null) {
+                        break;
+                    }
+
+                    long startTime = System.currentTimeMillis();
+                    try {
+                        byte[] bytes = Base64.getDecoder().decode(frame.base64());
+                        try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+                            BufferedImage img = ImageIO.read(bais);
+                            if (img != null && globalFrameConsumer != null) {
+                                globalFrameConsumer.accept(screenId, img);
+                            }
+                        }
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to decode screencast frame for screen #{}: {}", screenId, e.getMessage());
+                    } finally {
+                        ackScreencastFrame(frame.sessionId());
+                    }
+
+                    long targetInterval = Math.max(16, 1000 / Math.max(1, targetFps));
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    long delay = Math.max(0, targetInterval - elapsed);
+                    if (delay > 0) {
+                        try {
+                            Thread.sleep(delay);
+                        } catch (InterruptedException ignored) {}
+                    }
+                }
+            } finally {
+                isProcessingFrame.set(false);
+                // ループ終了直前に新しいフレームがセットされていた場合の取りこぼし防止
+                if (latestPendingFrame.get() != null) {
+                    tryStartFrameProcessing();
+                }
             }
         }
 

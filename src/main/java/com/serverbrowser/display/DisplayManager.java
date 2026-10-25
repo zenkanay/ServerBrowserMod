@@ -902,10 +902,6 @@ public class DisplayManager {
         ScheduledFuture<?> future = scheduledExecutor.schedule(() -> {
             followUpTasks.remove(screenId);
             try {
-                // Screencast で動画等が現在進行形でフレームを連続受信中なら追従ポーリングは不要
-                if (cdpEngine.isReceivingScreencast(screenId)) {
-                    return;
-                }
                 int w = screen.getPixelWidth();
                 int h = screen.getPixelHeight();
                 BufferedImage latest = cdpEngine.captureScreenshotForScreen(screenId, w, h);
@@ -1592,8 +1588,8 @@ public class DisplayManager {
                 continue; // 前回のチェックがまだ実行中ならスキップ
             }
 
-            // 画面の近くにプレイヤーがいるか確認（Screencastアクティブ時は16ブロック、非アクティブ時は32ブロック）
-            int checkDist = cdpEngine.isScreencastActive(screenId) ? 16 : 32;
+            // 画面の近くにプレイヤーがいるか確認（超大型ディスプレイでも離れた位置から確実に検知）
+            int checkDist = Math.max(96, Math.max(screen.getWidthTiles(), screen.getHeightTiles()) + 48);
             boolean hasNearbyPlayer = false;
             BlockPos screenPos = screen.getOriginWallPos();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
