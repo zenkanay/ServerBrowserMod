@@ -57,10 +57,10 @@ public class BrowserCommand {
                 )
                 // 4. ページ移動・検索: /browser open <URLまたは検索ワード>
                 .then(Commands.literal("open")
-                    .then(Commands.argument("url", StringArgumentType.greedyString())
+                    .then(Commands.argument("url_or_search", StringArgumentType.greedyString())
                         .executes(ctx -> openUrl(
                             ctx.getSource(),
-                            StringArgumentType.getString(ctx, "url")
+                            StringArgumentType.getString(ctx, "url_or_search")
                         ))
                     )
                 )
