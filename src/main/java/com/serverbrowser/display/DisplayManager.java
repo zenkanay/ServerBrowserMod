@@ -813,7 +813,28 @@ public class DisplayManager {
         if (scale != null) {
             double targetScale = Math.max(0.01, Math.min(config.maxScale, scale));
             screen.setScale(targetScale);
+            screen.clearTileCache();
             screen.refreshPointerTile(server);
+
+            // 静止ページでも即座に新解像度の全画面を描画更新し、カーソル抜け落ちを完全防止
+            getRenderExecutor().submit(() -> {
+                try {
+                    BufferedImage img;
+                    if (cdpEngine != null && cdpEngine.isAvailable() && !"builtin".equalsIgnoreCase(preferredEngine)) {
+                        img = cdpEngine.renderPageForScreen(screen.getId(), screen.getCurrentTarget(),
+                            screen.getPixelWidth(), screen.getPixelHeight(),
+                            screen.getQuality(), screen.getFps(), screen.getScale(),
+                            screen.getScrollY());
+                    } else {
+                        img = builtinEngine.renderPage(screen.getCurrentTarget(), screen.getPixelWidth(), screen.getPixelHeight(), screen.getScrollY());
+                    }
+                    if (img != null) {
+                        screen.updateDisplayFromAsync(img, server, true);
+                    }
+                } catch (Exception ex) {
+                    LOGGER.warn("Failed to refresh frame after scale change on screen #{}: {}", screen.getId(), ex.getMessage());
+                }
+            });
         }
 
         if (cdpEngine != null && cdpEngine.isAvailable()) {

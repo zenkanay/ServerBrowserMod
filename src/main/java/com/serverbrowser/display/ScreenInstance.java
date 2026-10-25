@@ -206,7 +206,12 @@ public class ScreenInstance {
         this.cursorScale = Math.max(0.1, Math.min(10.0, cursorScale));
     }
     public double getEffectiveCursorScale() {
-        return Math.max(0.05, this.cursorScale * this.scale);
+        // res（scale）の変動によるカーソルの極小化（消滅）や巨大化（画面覆い）を完全防止
+        // res が 0.01〜10.0 に変化しても、resFactor を 0.8〜1.5 の安全領域にクランプ
+        // これにより「res変更したらカーソルが見えなくなる」バグを根絶！
+        // プレイヤー自身が cursor コマンドで指定した cursorScale（0.1〜10.0）を第一優先で反映
+        double resFactor = Math.max(0.8, Math.min(1.5, this.scale));
+        return Math.max(0.3, this.cursorScale * resFactor);
     }
 
     /**
@@ -217,8 +222,8 @@ public class ScreenInstance {
         if (px < 0 || py < 0) return tiles;
 
         double s = getEffectiveCursorScale();
-        int curW = (int) Math.ceil(12.0 * s);
-        int curH = (int) Math.ceil(16.0 * s);
+        int curW = (int) Math.ceil(14.0 * s) + 2;
+        int curH = (int) Math.ceil(18.0 * s) + 2;
 
         int minTx = Math.max(0, px / 128);
         int maxTx = Math.min(widthTiles - 1, (px + curW) / 128);
@@ -238,8 +243,8 @@ public class ScreenInstance {
      */
     private boolean tileOverlapsCursor(int tx, int ty, int px, int py, double s) {
         if (px < 0 || py < 0) return false;
-        int curW = (int) Math.ceil(12.0 * s);
-        int curH = (int) Math.ceil(16.0 * s);
+        int curW = (int) Math.ceil(14.0 * s) + 2;
+        int curH = (int) Math.ceil(18.0 * s) + 2;
 
         int tileLeft = tx * 128;
         int tileTop = ty * 128;
@@ -829,12 +834,13 @@ public class ScreenInstance {
                 lastSentMovePx = newPx;
                 lastSentMovePy = newPy;
 
+                boolean wasIdle = isPointerIdle;
                 if (isPointerIdle) {
                     // アイドル（オートハイド）から即時復帰！
                     isPointerIdle = false;
                 }
 
-                if (newPx != this.pointerX || newPy != this.pointerY) {
+                if (wasIdle || newPx != this.pointerX || newPy != this.pointerY) {
                     updatePointerPosition(newPx, newPy, server);
                 }
             } else {
@@ -906,9 +912,11 @@ public class ScreenInstance {
     }
 
     public void refreshPointerTile(MinecraftServer server) {
-        if (!isPointerIdle && pointerX >= 0 && pointerY >= 0) {
+        wakePointer();
+        if (pointerX >= 0 && pointerY >= 0) {
             Set<Integer> covered = getTilesCoveredByCursor(pointerX, pointerY);
             for (int tileIdx : covered) {
+                lastTileColors.remove(tileIdx); // キャッシュ強制削除で差分スキップをバイパスし確実に再送
                 int tx = tileIdx % widthTiles;
                 int ty = tileIdx / widthTiles;
                 if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
@@ -918,6 +926,23 @@ public class ScreenInstance {
             lastCoveredTiles.clear();
             lastCoveredTiles.addAll(covered);
         }
+    }
+
+    /**
+     * 解像度変更時やリセット時に全タイルの色キャッシュとポインター記録をクリアし強制再送を準備
+     */
+    public void clearTileCache() {
+        this.lastTileColors.clear();
+        this.lastCoveredTiles.clear();
+        this.dirtyTileIndices.clear();
+        for (int i = 0; i < widthTiles * heightTiles; i++) {
+            this.dirtyTileIndices.add(i);
+        }
+        this.forceRefreshNext = true;
+    }
+
+    public void forceRefresh() {
+        this.forceRefreshNext = true;
     }
 
     public void clearPointer(MinecraftServer server) {
@@ -1040,9 +1065,13 @@ public class ScreenInstance {
     private static final double[] CURSOR_INNER_Y_BASE = { 2, 11, 9, 13, 12, 8, 8, 5, 2 };
 
     private void drawMouseCursor(Graphics2D g, int x, int y, double effectiveScale) {
-        double s = Math.max(0.05, effectiveScale);
+        // カーソル描画時はアンチエイリアスを無効化（くっきり原色パレットに直結させ、減色時のぼやけ・消滅を100%防止）
+        Object oldAntialias = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 
-        // 外側黒枠
+        double s = Math.max(0.6, effectiveScale);
+
+        // 外側黒枠ポリゴン
         int[] xPoints = new int[9];
         int[] yPoints = new int[9];
         for (int i = 0; i < 9; i++) {
@@ -1053,7 +1082,7 @@ public class ScreenInstance {
         g.fillPolygon(xPoints, yPoints, 9);
         g.drawPolygon(xPoints, yPoints, 9);
 
-        // 内側（通常は白、ドラッグ中はゴールド/黄色）
+        // 内側ポリゴン（通常は白、ドラッグ中はゴールド/黄色）
         int[] xInner = new int[9];
         int[] yInner = new int[9];
         for (int i = 0; i < 9; i++) {
@@ -1063,10 +1092,16 @@ public class ScreenInstance {
         g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
         g.fillPolygon(xInner, yInner, 9);
 
-        // 先端のハイライト点（通常は赤、ドラッグ中は鮮やかなオレンジ）
-        int dotSize = (int) Math.max(2, Math.round(2.0 * s));
+        // 先端のハイライト点（通常は鮮やかな赤、ドラッグ中はオレンジ）
+        // どんなスケールでも潰れず、かつ大きすぎないよう 2〜4px に収める
+        int dotSize = Math.max(2, Math.min(4, (int) Math.round(2.0 * s)));
         g.setColor(isDragging ? Color.ORANGE : Color.RED);
         g.fillRect(x, y, dotSize, dotSize);
+
+        // レンダリングヒントを元に戻す
+        if (oldAntialias != null) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAntialias);
+        }
     }
 
     public void resendToPlayer(ServerPlayer player) {
