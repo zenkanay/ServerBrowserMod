@@ -4,6 +4,8 @@ A server-side web browser mod for Minecraft (Fabric 1.21.11).
 
 ServerBrowser runs a headless Chromium instance on the server and streams web page renders directly to in-game item frame displays using vanilla map packets. Clients do not need to install any mod to view or interact with the displays.
 
+[日本語ドキュメントはこちら (Japanese README)](README_ja.md)
+
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-brightgreen.svg)](https://minecraft.net/)
 [![Fabric](https://img.shields.io/badge/Loader-Fabric-blue.svg)](https://fabricmc.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -13,11 +15,14 @@ ServerBrowser runs a headless Chromium instance on the server and streams web pa
 ## Features
 
 - **Server-Side Only**: Vanilla Minecraft clients can connect and see full web displays without installing client-side mods.
-- **Headless Chromium Engine**: Utilizes Chrome DevTools Protocol (CDP) to render modern web pages, CSS, JavaScript, and video players.
-- **Efficient Streaming**: Streams screencast frames asynchronously, updating only changed map tiles with bilinear scaling and palette quantization.
-- **Interactive Mouse Controls**: Raycasting-based cursor interaction with click, double click, drag, and scroll support.
-- **Configurable Displays**: Adjust per-display resolution scale, FPS, and JPEG compression quality on the fly, within server operator limits.
-- **Display Protection**: Remote wands are bound 1:1 to displays; item frames are protected from unauthorized rotation or destruction.
+- **Headless Chromium Engine**: Utilizes Chrome DevTools Protocol (CDP) to render modern web pages, CSS, JavaScript, and HTML5 video players (up to 4K).
+- **6-Directional Mounting**: Mount displays on walls, floors, or ceilings (downward-facing ceiling displays are properly oriented).
+- **Seamless Navigation & Tab Interception**: Automatically redirects `<a target="_blank">`, `window.open()`, and external links to navigate inside the current display without getting stuck.
+- **Unified Open & Google Search**: `/browser open` intelligently detects whether the input is a URL or a search query and navigates or searches on Google accordingly.
+- **Adaptive Cursor & Resolution Scaling**: Change per-display resolution (`/browser res`) with cursors automatically resizing to match. Fine-tune cursor size individually with `/browser cursor <scale>` with seamless multi-tile rendering.
+- **Efficient Streaming**: Streams GPU screencast frames asynchronously, updating only changed map tiles with direct buffer sampling and palette quantization.
+- **Interactive Mouse & Wand Controls**: Raycasting-based cursor interaction with click, double click, drag, and adaptive scrolling via dedicated Remote Wands.
+- **Display Protection**: Remote wands are bound 1:1 to displays; item frames and backing wall blocks are protected from unauthorized rotation or destruction.
 
 ---
 
@@ -60,7 +65,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser help` | Show concise user guide (`/browser help op` for admin commands) |
 | `/browser create [width] [height]` | Spawn a display and receive its Remote Wand |
 | `/browser destroy` | Destroy the display and wand held in hand |
-| `/browser open <url or query>` | Navigate to a URL or search on Google |
+| `/browser open <url or query>` | Navigate to a URL or search on Google (auto-detected) |
 | `/browser home` | Navigate to default home page |
 | `/browser reload` | Reload the current page |
 | `/browser back` / `/browser forward` | Navigate history back / forward |
@@ -73,6 +78,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser wand` | Reacquire wand for nearest display within 10 blocks |
 | `/browser fps <fps>` | Set frame rate for held display (1 to server max) |
 | `/browser res <scale>` | Set resolution scale for held display (e.g. 0.5, 1.0, 2.0) |
+| `/browser cursor <scale>` | Set cursor scale for held display (0.1 to 10.0, links with res) |
 | `/browser quality <quality>` | Set JPEG quality for held display (10 to 100) |
 | `/browser list` | List active displays and current properties |
 | `/browser info` | View detailed properties of held display |
@@ -89,6 +95,7 @@ Interactions require holding the dedicated **Remote Wand** bound to the target d
 | `/browser info_id <id>` | View detailed properties of display by ID |
 | `/browser fps_id <id> <fps>` | Set frame rate for display by ID |
 | `/browser res_id <id> <scale>` | Set resolution scale for display by ID |
+| `/browser cursor_id <id> <scale>` | Set cursor scale for display by ID (0.1 to 10.0) |
 | `/browser quality_id <id> <quality>` | Set JPEG quality for display by ID |
 | `/browser max_fps <fps>` | Set global server maximum FPS limit (1 to 60) |
 | `/browser max_res <scale>` | Set global server maximum resolution scale limit (0.01+) |
