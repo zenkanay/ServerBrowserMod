@@ -158,6 +158,12 @@ public class BrowserCommand {
                         .executes(ctx -> setScreenQuality(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "quality")))
                     )
                 )
+                // 16. カーソル倍率設定: /browser cursor <倍率>
+                .then(Commands.literal("cursor")
+                    .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.1, 10.0))
+                        .executes(ctx -> setScreenCursor(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "scale")))
+                    )
+                )
 
                 // ==== OP専用コマンド ====
                 // 16. 付近画面強制撤去: /browser destroy_near (OP専用)
@@ -210,6 +216,14 @@ public class BrowserCommand {
                         )
                     )
                 )
+                // 24. ID指定カーソル倍率変更: /browser cursor_id <id> <scale> (OP専用)
+                .then(Commands.literal("cursor_id")
+                    .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.1, 10.0))
+                            .executes(ctx -> setScreenCursorById(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "id"), DoubleArgumentType.getDouble(ctx, "scale")))
+                        )
+                    )
+                )
                 // 24. サーバー上限設定: /browser max_fps, max_res, max_quality (OP専用)
                 .then(Commands.literal("max_fps")
                     .then(Commands.argument("fps", IntegerArgumentType.integer(1, 60))
@@ -247,6 +261,7 @@ public class BrowserCommand {
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.fps_id"), false);
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.res_id"), false);
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.quality_id"), false);
+            source.sendSuccess(() -> Component.translatable("serverbrowser.help.cursor_id"), false);
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_fps"), false);
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_res"), false);
             source.sendSuccess(() -> Component.translatable("serverbrowser.help.max_quality"), false);
@@ -262,6 +277,7 @@ public class BrowserCommand {
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.mouse"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.wand"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.settings"), false);
+        source.sendSuccess(() -> Component.translatable("serverbrowser.help.cursor"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.list"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_title"), false);
         source.sendSuccess(() -> Component.translatable("serverbrowser.help.controls_right"), false);
@@ -615,6 +631,11 @@ public class BrowserCommand {
             screen.getPixelWidth(), screen.getPixelHeight()
         ), false);
         source.sendSuccess(() -> Component.translatable(
+            "serverbrowser.msg.info_cursor",
+            String.format("%.2f", screen.getCursorScale()),
+            String.format("%.2f", screen.getEffectiveCursorScale())
+        ), false);
+        source.sendSuccess(() -> Component.translatable(
             "serverbrowser.msg.info_fps",
             screen.getFps(), config.maxFps
         ), false);
@@ -812,6 +833,69 @@ public class BrowserCommand {
 
             DisplayManager.getInstance().updateScreenProperties(screen, null, null, scale, source.getServer());
             source.sendSuccess(() -> Component.translatable("serverbrowser.msg.scale_changed", screen.getId(), String.format("%.2f", scale), screen.getRenderWidth(), screen.getRenderHeight()), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // --- カーソル倍率コマンド ---
+    private static int setScreenCursor(CommandSourceStack source, double rawScale) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ScreenInstance screen = DisplayManager.getInstance().getHeldScreen(player);
+            if (screen == null) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.hold_wand_required"));
+                return 0;
+            }
+
+            double scale = Math.round(rawScale * 100.0) / 100.0;
+            if (scale < 0.1 || scale > 10.0) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.cursor_limit_exceeded", String.format("%.2f", scale)));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenCursor(screen, scale, source.getServer());
+            source.sendSuccess(() -> Component.translatable(
+                "serverbrowser.msg.cursor_changed",
+                screen.getId(),
+                String.format("%.2f", scale),
+                String.format("%.2f", screen.getEffectiveCursorScale())
+            ), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static int setScreenCursorById(CommandSourceStack source, int id, double rawScale) {
+        try {
+            if (!checkOp(source)) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.op_required"));
+                return 0;
+            }
+
+            ScreenInstance screen = DisplayManager.getInstance().getScreen(id);
+            if (screen == null) {
+                source.sendFailure(Component.literal("§c[ServerBrowser] 画面 #" + id + " は存在しません。"));
+                return 0;
+            }
+
+            double scale = Math.round(rawScale * 100.0) / 100.0;
+            if (scale < 0.1 || scale > 10.0) {
+                source.sendFailure(Component.translatable("serverbrowser.msg.cursor_limit_exceeded", String.format("%.2f", scale)));
+                return 0;
+            }
+
+            DisplayManager.getInstance().updateScreenCursor(screen, scale, source.getServer());
+            source.sendSuccess(() -> Component.translatable(
+                "serverbrowser.msg.cursor_changed",
+                screen.getId(),
+                String.format("%.2f", scale),
+                String.format("%.2f", screen.getEffectiveCursorScale())
+            ), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("Error: " + e.getMessage()));

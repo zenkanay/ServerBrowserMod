@@ -62,6 +62,8 @@ public class ScreenInstance {
     private int pointerY = -1;
     private int lastPointerTileX = -1;
     private int lastPointerTileY = -1;
+    // 前回カーソルを描画したタイルインデックス集合（マルチタイルでの残像防止・完全消去）
+    private final Set<Integer> lastCoveredTiles = ConcurrentHashMap.newKeySet();
 
     // ポインターのジッター（視線微細ブレ）吸収とスマートアイドル（動画オートハイド）管理
     private long lastPointerMoveTime = 0;
@@ -82,6 +84,8 @@ public class ScreenInstance {
     private int fps = 14;
     private int quality = 75;
     private double scale = 1.0;
+    // ディスプレイ個別のカーソル倍率（デフォルト 1.0。res と掛け合わされて実効サイズとなる）
+    private double cursorScale = 1.0;
 
     // 未送信または画像差分のあるタイルインデックスのセット（順序正しく送信するため ConcurrentSkipListSet を採用）
     private final Set<Integer> dirtyTileIndices = new java.util.concurrent.ConcurrentSkipListSet<>();
@@ -197,6 +201,54 @@ public class ScreenInstance {
     public void setQuality(int quality) { this.quality = quality; }
     public double getScale() { return scale; }
     public void setScale(double scale) { this.scale = scale; }
+    public double getCursorScale() { return cursorScale; }
+    public void setCursorScale(double cursorScale) {
+        this.cursorScale = Math.max(0.1, Math.min(10.0, cursorScale));
+    }
+    public double getEffectiveCursorScale() {
+        return Math.max(0.05, this.cursorScale * this.scale);
+    }
+
+    /**
+     * カーソルが重なっている全タイルのインデックス集合を計算（マルチタイル対応）
+     */
+    public Set<Integer> getTilesCoveredByCursor(int px, int py) {
+        Set<Integer> tiles = new HashSet<>();
+        if (px < 0 || py < 0) return tiles;
+
+        double s = getEffectiveCursorScale();
+        int curW = (int) Math.ceil(12.0 * s);
+        int curH = (int) Math.ceil(16.0 * s);
+
+        int minTx = Math.max(0, px / 128);
+        int maxTx = Math.min(widthTiles - 1, (px + curW) / 128);
+        int minTy = Math.max(0, py / 128);
+        int maxTy = Math.min(heightTiles - 1, (py + curH) / 128);
+
+        for (int ty = minTy; ty <= maxTy; ty++) {
+            for (int tx = minTx; tx <= maxTx; tx++) {
+                tiles.add(ty * widthTiles + tx);
+            }
+        }
+        return tiles;
+    }
+
+    /**
+     * 指定タイルがカーソル矩形と交差しているかを判定
+     */
+    private boolean tileOverlapsCursor(int tx, int ty, int px, int py, double s) {
+        if (px < 0 || py < 0) return false;
+        int curW = (int) Math.ceil(12.0 * s);
+        int curH = (int) Math.ceil(16.0 * s);
+
+        int tileLeft = tx * 128;
+        int tileTop = ty * 128;
+        int tileRight = tileLeft + 128;
+        int tileBottom = tileTop + 128;
+
+        return (px < tileRight && (px + curW) > tileLeft &&
+                py < tileBottom && (py + curH) > tileTop);
+    }
     public int getRenderWidth() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelWidth() * scale))); }
     public int getRenderHeight() { return Math.max(16, Math.min(16384, (int) Math.round(getPixelHeight() * scale))); }
 
@@ -575,16 +627,19 @@ public class ScreenInstance {
 
         List<ClientboundMapItemDataPacket> packetsToSend = new ArrayList<>();
 
-        // 1. 最優先: マウスポインターがあるタイル（視線・操作レスポンスを 0 遅延で保証）
-        int pointerTileIdx = -1;
-        if (!isPointerIdle && lastPointerTileX >= 0 && lastPointerTileY >= 0
-                && lastPointerTileX < widthTiles && lastPointerTileY < heightTiles) {
-            pointerTileIdx = lastPointerTileY * widthTiles + lastPointerTileX;
-            ClientboundMapItemDataPacket ptrPacket = generateTilePacket(lastPointerTileX, lastPointerTileY, true);
+        // 1. 最優先: マウスポインターがある全タイル（視線・操作レスポンスを 0 遅延で保証）
+        Set<Integer> covered = (!isPointerIdle && pointerX >= 0 && pointerY >= 0)
+            ? getTilesCoveredByCursor(pointerX, pointerY)
+            : Collections.emptySet();
+
+        for (int ptrIdx : covered) {
+            int tx = ptrIdx % widthTiles;
+            int ty = ptrIdx / widthTiles;
+            ClientboundMapItemDataPacket ptrPacket = generateTilePacket(tx, ty, true);
             if (ptrPacket != null) {
                 packetsToSend.add(ptrPacket);
             }
-            dirtyTileIndices.remove(pointerTileIdx);
+            dirtyTileIndices.remove(ptrIdx);
         }
 
         // 2. 変化したすべてのタイル（上段から最下段まで）を1回で余すことなくすべてパケット生成！
@@ -594,7 +649,7 @@ public class ScreenInstance {
             int currentTile = it.next();
             it.remove();
 
-            if (currentTile == pointerTileIdx) continue;
+            if (covered.contains(currentTile)) continue;
 
             int tx = currentTile % widthTiles;
             int ty = currentTile / widthTiles;
@@ -790,9 +845,14 @@ public class ScreenInstance {
                     // ブラウザエンジンへアンホバー（画面外座標）を送信し、YouTube等のコントロールバーを自動非表示にする
                     DisplayManager.getInstance().dispatchMouseMove(this.id, -100, -100);
                     // 画面上のポインタータイルからポインターを消去して動画だけをクリア表示
-                    if (baseImage != null && lastPointerTileX >= 0 && lastPointerTileX < widthTiles &&
-                        lastPointerTileY >= 0 && lastPointerTileY < heightTiles) {
-                        sendTile(lastPointerTileX, lastPointerTileY, server, false);
+                    if (baseImage != null) {
+                        for (int tileIdx : lastCoveredTiles) {
+                            int tx = tileIdx % widthTiles;
+                            int ty = tileIdx / widthTiles;
+                            if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
+                                sendTile(tx, ty, server, false);
+                            }
+                        }
                     }
                 }
             }
@@ -805,17 +865,10 @@ public class ScreenInstance {
     }
 
     private void updatePointerPosition(int newPx, int newPy, MinecraftServer server) {
-        int newTileX = newPx / 128;
-        int newTileY = newPy / 128;
-
-        boolean tileChanged = (newTileX != lastPointerTileX || newTileY != lastPointerTileY);
-        int oldTileX = lastPointerTileX;
-        int oldTileY = lastPointerTileY;
-
         this.pointerX = newPx;
         this.pointerY = newPy;
-        this.lastPointerTileX = newTileX;
-        this.lastPointerTileY = newTileY;
+        this.lastPointerTileX = newPx / 128;
+        this.lastPointerTileY = newPy / 128;
 
         // ブラウザエンジンへマウス移動イベント（ドラッグ中ならドラッグ移動、通常ならホバー）を送信！
         if (isDragging) {
@@ -826,30 +879,54 @@ public class ScreenInstance {
 
         if (baseImage == null) return;
 
-        // タイルが変わった場合、古いタイルからポインタを消去して再送
-        if (tileChanged && oldTileX >= 0 && oldTileX < widthTiles && oldTileY >= 0 && oldTileY < heightTiles) {
-            sendTile(oldTileX, oldTileY, server, false);
+        Set<Integer> newCovered = getTilesCoveredByCursor(newPx, newPy);
+
+        // 1. カーソルが去った古いタイル（再送してカーソルを消去）
+        for (int oldIdx : lastCoveredTiles) {
+            if (!newCovered.contains(oldIdx)) {
+                int tx = oldIdx % widthTiles;
+                int ty = oldIdx / widthTiles;
+                if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
+                    sendTile(tx, ty, server, false);
+                }
+            }
         }
 
-        // 新しいタイルにポインタを描画して送信（アイドル時はポインタを描画しない）
-        sendTile(newTileX, newTileY, server, !isPointerIdle);
+        // 2. カーソルが存在する新しいタイル（カーソルを描画して送信）
+        for (int newIdx : newCovered) {
+            int tx = newIdx % widthTiles;
+            int ty = newIdx / widthTiles;
+            if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
+                sendTile(tx, ty, server, !isPointerIdle);
+            }
+        }
+
+        lastCoveredTiles.clear();
+        lastCoveredTiles.addAll(newCovered);
     }
 
     public void refreshPointerTile(MinecraftServer server) {
-        if (!isPointerIdle && lastPointerTileX >= 0 && lastPointerTileX < widthTiles && lastPointerTileY >= 0 && lastPointerTileY < heightTiles) {
-            sendTile(lastPointerTileX, lastPointerTileY, server, true);
+        if (!isPointerIdle && pointerX >= 0 && pointerY >= 0) {
+            Set<Integer> covered = getTilesCoveredByCursor(pointerX, pointerY);
+            for (int tileIdx : covered) {
+                int tx = tileIdx % widthTiles;
+                int ty = tileIdx / widthTiles;
+                if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
+                    sendTile(tx, ty, server, true);
+                }
+            }
+            lastCoveredTiles.clear();
+            lastCoveredTiles.addAll(covered);
         }
     }
 
     public void clearPointer(MinecraftServer server) {
-        if (pointerX != -1 || pointerY != -1 || isPointerIdle) {
+        if (pointerX != -1 || pointerY != -1 || isPointerIdle || !lastCoveredTiles.isEmpty()) {
             if (isDragging) {
                 this.isDragging = false;
                 DisplayManager.getInstance().dispatchMouseRelease(this.id, pointerX, pointerY);
             }
 
-            int oldTileX = lastPointerTileX;
-            int oldTileY = lastPointerTileY;
             this.pointerX = -1;
             this.pointerY = -1;
             this.lastPointerTileX = -1;
@@ -862,9 +939,16 @@ public class ScreenInstance {
             // 画面外へマウス移動イベントを送信してホバーを解除！
             DisplayManager.getInstance().dispatchMouseMove(this.id, -100, -100);
 
-            if (baseImage != null && oldTileX >= 0 && oldTileX < widthTiles && oldTileY >= 0 && oldTileY < heightTiles) {
-                sendTile(oldTileX, oldTileY, server, false);
+            if (baseImage != null) {
+                for (int oldIdx : lastCoveredTiles) {
+                    int tx = oldIdx % widthTiles;
+                    int ty = oldIdx / widthTiles;
+                    if (tx >= 0 && tx < widthTiles && ty >= 0 && ty < heightTiles) {
+                        sendTile(tx, ty, server, false);
+                    }
+                }
             }
+            lastCoveredTiles.clear();
         }
     }
 
@@ -915,12 +999,14 @@ public class ScreenInstance {
             }
         }
 
-        // ポインター（マウスクリック矢印 / カーソル）の描画
+        // ポインター（マウスクリック矢印 / カーソル）の描画（マルチタイル対応）
         if (drawPointer && pointerX >= 0 && pointerY >= 0) {
-            int localPx = pointerX - sx;
-            int localPy = pointerY - sy;
-
-            drawMouseCursor(g, localPx, localPy);
+            double effectiveScale = getEffectiveCursorScale();
+            if (tileOverlapsCursor(tx, ty, pointerX, pointerY, effectiveScale)) {
+                int localPx = pointerX - sx;
+                int localPy = pointerY - sy;
+                drawMouseCursor(g, localPx, localPy, effectiveScale);
+            }
         }
 
         g.dispose();
@@ -948,25 +1034,39 @@ public class ScreenInstance {
         );
     }
 
-    private void drawMouseCursor(Graphics2D g, int x, int y) {
-        // 洗練された白いマウスポインタ矢印（黒枠付き）
-        int[] xPoints = { x, x, x + 4, x + 6, x + 9, x + 7, x + 11, x + 7, x };
-        int[] yPoints = { y, y + 13, y + 10, y + 15, y + 14, y + 9, y + 9, y + 6, y };
+    private static final double[] CURSOR_X_BASE = { 0, 0, 4, 6, 9, 7, 11, 7, 0 };
+    private static final double[] CURSOR_Y_BASE = { 0, 13, 10, 15, 14, 9, 9, 6, 0 };
+    private static final double[] CURSOR_INNER_X_BASE = { 1, 1, 4, 6, 8, 6, 9, 6, 1 };
+    private static final double[] CURSOR_INNER_Y_BASE = { 2, 11, 9, 13, 12, 8, 8, 5, 2 };
+
+    private void drawMouseCursor(Graphics2D g, int x, int y, double effectiveScale) {
+        double s = Math.max(0.05, effectiveScale);
 
         // 外側黒枠
+        int[] xPoints = new int[9];
+        int[] yPoints = new int[9];
+        for (int i = 0; i < 9; i++) {
+            xPoints[i] = x + (int) Math.round(CURSOR_X_BASE[i] * s);
+            yPoints[i] = y + (int) Math.round(CURSOR_Y_BASE[i] * s);
+        }
         g.setColor(Color.BLACK);
         g.fillPolygon(xPoints, yPoints, 9);
         g.drawPolygon(xPoints, yPoints, 9);
 
         // 内側（通常は白、ドラッグ中はゴールド/黄色）
-        int[] xInner = { x + 1, x + 1, x + 4, x + 6, x + 8, x + 6, x + 9, x + 6, x + 1 };
-        int[] yInner = { y + 2, y + 11, y + 9, y + 13, y + 12, y + 8, y + 8, y + 5, y + 2 };
+        int[] xInner = new int[9];
+        int[] yInner = new int[9];
+        for (int i = 0; i < 9; i++) {
+            xInner[i] = x + (int) Math.round(CURSOR_INNER_X_BASE[i] * s);
+            yInner[i] = y + (int) Math.round(CURSOR_INNER_Y_BASE[i] * s);
+        }
         g.setColor(isDragging ? new Color(255, 215, 0) : Color.WHITE);
         g.fillPolygon(xInner, yInner, 9);
 
         // 先端のハイライト点（通常は赤、ドラッグ中は鮮やかなオレンジ）
+        int dotSize = (int) Math.max(2, Math.round(2.0 * s));
         g.setColor(isDragging ? Color.ORANGE : Color.RED);
-        g.fillRect(x, y, 2, 2);
+        g.fillRect(x, y, dotSize, dotSize);
     }
 
     public void resendToPlayer(ServerPlayer player) {

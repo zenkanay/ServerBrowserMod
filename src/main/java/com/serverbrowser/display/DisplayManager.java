@@ -653,6 +653,7 @@ public class DisplayManager {
         public int fps;
         public int quality;
         public double scale;
+        public double cursorScale;
         public String url;
         public int scrollY;
     }
@@ -696,6 +697,7 @@ public class DisplayManager {
                 data.fps = s.getFps();
                 data.quality = s.getQuality();
                 data.scale = s.getScale();
+                data.cursorScale = s.getCursorScale();
                 data.url = s.getCurrentTarget();
                 data.scrollY = s.getScrollY();
                 list.add(data);
@@ -758,6 +760,7 @@ public class DisplayManager {
                 if (data.fps > 0) screen.setFps(data.fps);
                 if (data.quality > 0) screen.setQuality(data.quality);
                 if (data.scale > 0.0) screen.setScale(data.scale);
+                if (data.cursorScale > 0.0) screen.setCursorScale(data.cursorScale);
 
                 // 額縁の再バインド・再構築
                 screen.rebindOrRebuildScreen();
@@ -810,12 +813,25 @@ public class DisplayManager {
         if (scale != null) {
             double targetScale = Math.max(0.01, Math.min(config.maxScale, scale));
             screen.setScale(targetScale);
+            screen.refreshPointerTile(server);
         }
 
         if (cdpEngine != null && cdpEngine.isAvailable()) {
             cdpEngine.updateScreenSettings(screen.getId(), screen.getPixelWidth(), screen.getPixelHeight(), screen.getQuality(), screen.getFps(), screen.getScale());
         }
 
+        saveScreens(server);
+        return true;
+    }
+
+    /**
+     * ディスプレイのカーソル倍率を動的変更し永続化
+     */
+    public boolean updateScreenCursor(ScreenInstance screen, double cursorScale, MinecraftServer server) {
+        if (screen == null) return false;
+        double targetScale = Math.max(0.1, Math.min(10.0, cursorScale));
+        screen.setCursorScale(targetScale);
+        screen.refreshPointerTile(server);
         saveScreens(server);
         return true;
     }
