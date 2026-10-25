@@ -4,8 +4,6 @@ A server-side web browser mod for Minecraft (Fabric 1.21.11).
 
 ServerBrowser runs a headless Chromium instance on the server and streams web page renders directly to in-game item frame displays using vanilla map packets. Clients do not need to install any mod to view or interact with the displays.
 
-[日本語ドキュメントはこちら (Japanese README)](README_ja.md)
-
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-brightgreen.svg)](https://minecraft.net/)
 [![Fabric](https://img.shields.io/badge/Loader-Fabric-blue.svg)](https://fabricmc.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
